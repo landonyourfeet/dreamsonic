@@ -1,0 +1,20 @@
+{
+  "name": "dreamsonic",
+  "version": "1.0.0",
+  "description": "DreamSonic — EEG-guided sound and light wellness sessions.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "find . -name '*.js' -not -path './node_modules/*' -exec node --check {} \\;"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "pg": "^8.13.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
