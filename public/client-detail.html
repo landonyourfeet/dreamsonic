@@ -3,464 +3,97 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Project Halo · Subject Dossier</title>
-<link rel="stylesheet" href="/static/halo-core.css">
+<title>DreamSonic — Brainwave training through sound and light</title>
 <style>
-  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; position: relative; z-index: 1; }
-
-  .dossier-grid {
-    display: grid;
-    grid-template-columns: 360px 1fr;
-    gap: 14px;
-    margin-bottom: 14px;
+  :root {
+    --bg: #f7f6f2;
+    --panel: #ffffff;
+    --line: #e6e3da;
+    --text: #1a1a1a;
+    --text-dim: #6a6a64;
+    --accent: #2c6179;
+    --accent-soft: #d6e5ed;
   }
-
-  /* Subject card */
-  .subject-card { padding: 24px; }
-  .subject-head {
-    display: flex; gap: 18px; align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 18px;
-    border-bottom: 1px solid var(--halo-line);
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
   }
-  .avatar-big {
-    width: 72px; height: 72px; flex-shrink: 0;
-    border: 1px solid var(--halo-cyan);
-    display: grid; place-items: center;
-    font-family: var(--mono); font-size: 26px;
-    color: var(--halo-cyan); letter-spacing: 2px;
-    position: relative;
-    box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.12);
+  .wrap { max-width: 720px; margin: 0 auto; padding: 80px 24px 40px; }
+  .brand {
+    font-size: 14px; letter-spacing: 3px; color: var(--accent);
+    text-transform: uppercase; font-weight: 500;
+    margin-bottom: 48px;
   }
-  .avatar-big::before, .avatar-big::after {
-    content: ''; position: absolute;
-    width: 8px; height: 8px; border: 1px solid var(--halo-cyan);
+  h1 { font-size: 42px; font-weight: 300; letter-spacing: -0.5px; margin: 0 0 16px; line-height: 1.15; }
+  .tagline { font-size: 18px; color: var(--text-dim); margin-bottom: 48px; }
+  h2 { font-size: 20px; font-weight: 500; margin: 40px 0 12px; letter-spacing: -0.2px; }
+  p { margin: 0 0 18px; color: #333; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 28px 32px;
+    margin: 40px 0;
   }
-  .avatar-big::before { top: -3px; left: -3px; border-right: none; border-bottom: none; }
-  .avatar-big::after  { bottom: -3px; right: -3px; border-left: none; border-top: none; }
-
-  .subject-name {
-    font-family: var(--mono); font-size: 18px;
-    color: var(--halo-text); letter-spacing: 2px;
-    margin: 0 0 6px;
+  .card.accent { background: var(--accent-soft); border-color: #b8d2de; }
+  .card h3 { margin: 0 0 10px; font-size: 16px; font-weight: 500; color: var(--accent); letter-spacing: 0.3px; }
+  ul { padding-left: 18px; margin: 0; }
+  li { margin-bottom: 6px; color: #333; }
+  .disclaimer {
+    font-size: 12px; color: var(--text-dim); line-height: 1.7;
+    margin: 60px 0 24px; padding-top: 24px; border-top: 1px solid var(--line);
   }
-  .subject-id {
-    font-family: var(--mono); font-size: 10px;
-    color: var(--halo-text-faint); letter-spacing: 1.5px;
-    text-transform: uppercase;
+  footer {
+    font-size: 11px; color: var(--text-dim); letter-spacing: 1px;
+    text-transform: uppercase; text-align: center;
+    padding: 32px 24px; border-top: 1px solid var(--line);
+    background: var(--panel);
   }
-
-  .stamp-row {
-    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;
-  }
-
-  /* Secure portal link */
-  .portal-box {
-    margin-top: 18px;
-    padding: 14px;
-    background: var(--halo-void);
-    border: 1px dashed var(--halo-line-hot);
-  }
-  .portal-label {
-    font-family: var(--mono); font-size: 9px;
-    letter-spacing: 2px; color: var(--halo-cyan);
-    text-transform: uppercase; margin-bottom: 8px;
-    text-shadow: 0 0 6px rgba(0, 212, 255, 0.4);
-  }
-  .portal-url {
-    font-family: var(--mono); font-size: 11px;
-    color: var(--halo-text); word-break: break-all;
-    padding: 6px 0;
-  }
-  .copy-btn-row { display: flex; gap: 8px; margin-top: 8px; }
-  .copied-flash {
-    color: var(--halo-green);
-    font-family: var(--mono); font-size: 10px;
-    letter-spacing: 1.5px; text-transform: uppercase;
-    padding: 6px 10px;
-  }
-
-  /* Ops history */
-  .empty {
-    padding: 40px 10px; text-align: center;
-    color: var(--halo-text-faint);
-    font-family: var(--mono); font-size: 11px;
-    letter-spacing: 1.5px; text-transform: uppercase;
-  }
-
-  .delta-positive { color: var(--halo-green); }
-  .delta-negative { color: var(--halo-red); }
-  .delta-neutral  { color: var(--halo-text-faint); }
-
-  /* Modal */
-  .modal-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(2, 5, 10, 0.85);
-    backdrop-filter: blur(4px);
-    display: none; align-items: center; justify-content: center;
-    z-index: 100;
-  }
-  .modal-backdrop.open { display: flex; }
-  .modal {
-    background: var(--halo-panel);
-    border: 1px solid var(--halo-cyan);
-    box-shadow: 0 0 40px rgba(0, 212, 255, 0.2);
-    width: 100%; max-width: 540px;
-    padding: 28px; position: relative;
-  }
-  .modal::before, .modal::after,
-  .modal > .corners::before, .modal > .corners::after {
-    content: ''; position: absolute;
-    width: 12px; height: 12px;
-    border: 0 solid var(--halo-cyan);
-  }
-  .modal::before { top: -1px; left: -1px; border-top-width: 1px; border-left-width: 1px; }
-  .modal::after  { top: -1px; right: -1px; border-top-width: 1px; border-right-width: 1px; }
-  .modal > .corners { position: absolute; inset: 0; pointer-events: none; }
-  .modal > .corners::before { bottom: -1px; left: -1px; border-bottom-width: 1px; border-left-width: 1px; }
-  .modal > .corners::after  { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
-
-  .modal h2 {
-    font-family: var(--mono); font-size: 12px;
-    letter-spacing: 3px; color: var(--halo-cyan);
-    text-transform: uppercase; margin: 0 0 4px;
-  }
-  .modal .sub-txt {
-    color: var(--halo-text-dim); font-size: 11px;
-    font-family: var(--mono); letter-spacing: 0.5px;
-    margin-bottom: 18px;
-  }
-  .gate-warn {
-    background: rgba(255, 48, 80, 0.1);
-    border: 1px solid var(--halo-red);
-    color: #ff8899;
-    padding: 10px 12px;
-    font-family: var(--mono); font-size: 11px;
-    margin-bottom: 14px;
-    letter-spacing: 0.5px;
-  }
+  footer a { color: var(--text-dim); text-decoration: none; margin: 0 12px; }
+  footer a:hover { color: var(--accent); }
 </style>
 </head>
-<body class="scanlines">
+<body>
+<main class="wrap">
+  <div class="brand">DreamSonic</div>
 
-<div class="classification">
-  <div><span class="dot"></span>PROJECT HALO · SUBJECT DOSSIER · CLASSIFIED</div>
-  <div class="meta" id="hdrUTC">—</div>
-</div>
+  <h1>Brainwave training through sound and light.</h1>
+  <p class="tagline">A wellness coaching practice using EEG-guided sensory entrainment for relaxation, focus, creativity, and recovery.</p>
 
-<div class="console-header">
-  <div class="halo-brand">
-    HALO<span class="slash">//</span><span class="sub">SUBJECT DOSSIER</span>
-  </div>
-  <div style="display: flex; gap: 10px;">
-    <a href="/dashboard" class="btn">◂ CONSOLE</a>
-    <button class="btn primary" id="btnSchedule" disabled>▸ SCHEDULE OP</button>
-  </div>
-</div>
-
-<div class="wrap">
-
-  <div class="dossier-grid">
-
-    <!-- Subject card -->
-    <div class="hp subject-card"><span class="corners"></span>
-      <div class="subject-head">
-        <div class="avatar-big" id="avatarBig">—</div>
-        <div>
-          <div class="subject-name" id="subjectName">loading…</div>
-          <div class="subject-id" id="subjectIdRow">—</div>
-        </div>
-      </div>
-
-      <div class="stamp-row" id="stampRow"></div>
-
-      <div class="kv"><span class="k">First Name</span><span class="v" id="fFirst">—</span></div>
-      <div class="kv"><span class="k">Last Initial</span><span class="v" id="fLast">—</span></div>
-      <div class="kv"><span class="k">DOB</span><span class="v" id="fDob">—</span></div>
-      <div class="kv"><span class="k">Email</span><span class="v" id="fEmail">—</span></div>
-      <div class="kv"><span class="k">Phone</span><span class="v" id="fPhone">—</span></div>
-      <div class="kv"><span class="k">Enrolled</span><span class="v" id="fCreated">—</span></div>
-
-      <!-- Secure client portal -->
-      <div class="portal-box">
-        <div class="portal-label">◂ Secure Client Portal</div>
-        <div class="portal-url" id="portalUrl">—</div>
-        <div class="copy-btn-row">
-          <button class="btn small" id="btnCopyPortal">Copy Link</button>
-          <span id="copiedFlash" class="copied-flash" style="display:none;">✓ COPIED</span>
-        </div>
-        <div style="font-family:var(--mono);font-size:9px;color:var(--halo-text-faint);letter-spacing:1px;margin-top:8px;text-transform:uppercase;">
-          send to subject · uuid-gated · read only
-        </div>
-      </div>
-    </div>
-
-    <!-- Ops history -->
-    <div class="hp"><span class="corners"></span>
-      <div class="hp-title">
-        <span>Operations History</span>
-        <span class="meta" id="opsMeta">—</span>
-      </div>
-      <table>
-        <thead><tr>
-          <th>Timestamp</th>
-          <th>Protocol</th>
-          <th>Status</th>
-          <th>Δ Stress</th>
-          <th>Δ Focus</th>
-          <th>Target Gain</th>
-          <th style="width:1%"></th>
-        </tr></thead>
-        <tbody id="opsBody">
-          <tr><td colspan="7" class="empty">loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
-
+  <div class="card accent">
+    <h3>If you're here for your progress portal</h3>
+    <p style="margin:0;">Your coach sent you a personal link that looks like this:<br>
+    <span style="font-family: 'SF Mono', Consolas, monospace; font-size: 13px; color: var(--accent);">dreamsonic.org/w/<em>your-unique-code</em></span><br>
+    Please use that link to view your session history. If you've lost it, ask your coach to resend.</p>
   </div>
 
-</div>
+  <h2>What we do</h2>
+  <p>Sessions combine consumer-grade EEG measurement with guided audio and light entrainment to help clients train their own relaxation, focus, and sleep-readiness responses. Each protocol targets a specific brainwave band — alpha for calm, theta for creativity, SMR for focus, and so on — paired with pre- and post-session self-reports to track change over time.</p>
 
-<!-- Schedule modal -->
-<div class="modal-backdrop" id="scheduleModal">
-  <div class="modal">
-    <span class="corners"></span>
-    <h2>Schedule New Operation</h2>
-    <div class="sub-txt">Subject must have medical clearance and signed consent.</div>
+  <h2>What this is not</h2>
+  <p>DreamSonic is a wellness and performance practice. Sessions are not medical treatment, therapy, or counseling, and they are not a substitute for care by a licensed healthcare provider. If you're experiencing symptoms of a medical or psychological condition, please consult a qualified professional.</p>
 
-    <div id="scheduleWarn"></div>
-
-    <label>Protocol</label>
-    <select id="schProtocol"><option value="">—</option></select>
-
-    <label>Scheduled For</label>
-    <input type="datetime-local" id="schWhen">
-
-    <label>Operator Name</label>
-    <input type="text" id="schCoach" placeholder="e.g. Landon, Janelle, Jodi">
-
-    <label>EEG Source</label>
-    <select id="schSource">
-      <option value="simulator">simulator · no headband required</option>
-      <option value="bluetooth">bluetooth · brainbit headband</option>
-    </select>
-
-    <div style="display:flex;gap:10px;margin-top:22px;justify-content:flex-end;">
-      <button class="btn" id="btnCancelSch">Cancel</button>
-      <button class="btn primary" id="btnConfirmSch">◂ Lock Operation</button>
-    </div>
-    <div id="scheduleErr"></div>
+  <div class="card">
+    <h3>Who we serve</h3>
+    <ul>
+      <li>Adults pursuing relaxation, focus, creativity, or sleep training as personal goals</li>
+      <li>Clients who have completed a medical screening and signed informed consent</li>
+    </ul>
   </div>
-</div>
 
-<script>
-const clientId = parseInt(window.location.pathname.match(/\/client\/(\d+)/)[1], 10);
-let client = null;
-let protocols = [];
+  <div class="disclaimer">
+    The BrainBit EEG headband used in sessions is a consumer / research-grade device, not FDA-cleared for clinical diagnosis. Photic stimulation carries a small risk for photosensitive individuals; all clients complete a medical screening before their first session. Participation is voluntary and may be stopped at any time.
+  </div>
+</main>
 
-// Live UTC
-setInterval(() => {
-  document.getElementById('hdrUTC').textContent =
-    new Date().toISOString().substr(11, 8) + ' UTC';
-}, 1000);
-
-async function load() {
-  try {
-    const [cRes, pRes] = await Promise.all([
-      fetch(`/api/clients/${clientId}`),
-      fetch('/api/protocols'),
-    ]);
-    const cData = await cRes.json();
-    const pData = await pRes.json();
-    if (!cRes.ok) throw new Error(cData.error);
-    client = cData.client;
-    const sessions = cData.sessions || [];
-    protocols = pData.protocols || [];
-
-    renderClient();
-    renderSessions(sessions);
-    fillProtocolDropdown();
-    wireSchedule();
-
-    if (new URLSearchParams(window.location.search).get('schedule') === '1') {
-      openScheduleModal();
-    }
-  } catch (err) {
-    alert('Load failed: ' + err.message);
-  }
-}
-
-function renderClient() {
-  const c = client;
-  const initials = c.first_name.charAt(0).toUpperCase() + c.last_name_initial.toUpperCase();
-
-  document.getElementById('avatarBig').textContent = initials;
-  document.getElementById('subjectName').textContent = `${c.first_name} ${c.last_name_initial}.`;
-  document.getElementById('subjectIdRow').textContent =
-    `ID · ${c.client_external_id.substr(0,8)}`;
-
-  document.getElementById('fFirst').textContent   = c.first_name;
-  document.getElementById('fLast').textContent    = c.last_name_initial;
-  document.getElementById('fDob').textContent     =
-    c.dob_month && c.dob_year ? `${c.dob_month}/${c.dob_year}` : '—';
-  document.getElementById('fEmail').textContent   = c.email || '—';
-  document.getElementById('fPhone').textContent   = c.phone || '—';
-  document.getElementById('fCreated').textContent =
-    new Date(c.created_at).toLocaleDateString();
-
-  // Status stamps
-  const clearanceCls = c.medical_clearance_status === 'cleared' ? 'ok'
-    : c.medical_clearance_status === 'disqualified' ? 'err' : 'warn';
-  const consentCls = c.consent_signed_at ? 'ok' : 'idle';
-  document.getElementById('stampRow').innerHTML = `
-    <span class="pill ${clearanceCls}">Clearance · ${c.medical_clearance_status}</span>
-    <span class="pill ${consentCls}">Consent · ${c.consent_signed_at ? 'signed' : 'missing'}</span>`;
-
-  // Portal URL — uses current host so it works across domains
-  const portalUrl = `https://dreamsonic.org/w/${c.client_external_id}`;
-  document.getElementById('portalUrl').textContent = portalUrl;
-
-  // Schedule button only enabled if fully cleared
-  const canSchedule = c.medical_clearance_status === 'cleared' && !!c.consent_signed_at;
-  document.getElementById('btnSchedule').disabled = !canSchedule;
-}
-
-function renderSessions(sessions) {
-  const opsMeta = document.getElementById('opsMeta');
-  const opsBody = document.getElementById('opsBody');
-  opsMeta.textContent = `${sessions.length} TOTAL`;
-
-  if (!sessions.length) {
-    opsBody.innerHTML = '<tr><td colspan="7" class="empty">no operations on record</td></tr>';
-    return;
-  }
-
-  opsBody.innerHTML = sessions.map(s => {
-    const when = s.started_at
-      ? new Date(s.started_at).toLocaleString()
-      : s.scheduled_at
-        ? new Date(s.scheduled_at).toLocaleString() + ' · sched'
-        : '—';
-    const statusCls = s.status === 'completed' ? 'ok'
-      : s.status === 'stopped_early' ? 'warn'
-      : s.status === 'cancelled' ? 'err' : 'idle';
-
-    const dStress = delta(s.pre_stress, s.post_stress, true);
-    const dFocus  = delta(s.pre_focus, s.post_focus, false);
-    const gain    = targetGain(s);
-
-    return `<tr>
-      <td>${when}</td>
-      <td>${s.protocol_name}</td>
-      <td><span class="pill ${statusCls}">${s.status.replace('_',' ')}</span></td>
-      <td>${dStress}</td>
-      <td>${dFocus}</td>
-      <td>${gain}</td>
-      <td><a class="btn small" href="/session/${s.id}/run">open</a></td>
-    </tr>`;
-  }).join('');
-}
-
-function delta(pre, post, reverseGood) {
-  if (pre == null || post == null) return '<span class="delta-neutral">—</span>';
-  const d = post - pre;
-  const good = reverseGood ? d < 0 : d > 0;
-  const cls = d === 0 ? 'delta-neutral' : (good ? 'delta-positive' : 'delta-negative');
-  const sign = d > 0 ? '+' : '';
-  return `<span class="${cls}">${sign}${d}</span>`;
-}
-
-function targetGain(s) {
-  if (!s.target_band_baseline || !s.target_band_stimulus) {
-    return '<span class="delta-neutral">—</span>';
-  }
-  const base = parseFloat(s.target_band_baseline);
-  const stim = parseFloat(s.target_band_stimulus);
-  if (!base) return '<span class="delta-neutral">—</span>';
-  const pct = ((stim - base) / base) * 100;
-  const cls = pct > 0 ? 'delta-positive' : pct < 0 ? 'delta-negative' : 'delta-neutral';
-  const sign = pct > 0 ? '+' : '';
-  return `<span class="${cls}">${sign}${pct.toFixed(0)}%</span>`;
-}
-
-function fillProtocolDropdown() {
-  const sel = document.getElementById('schProtocol');
-  sel.innerHTML = '<option value="">—</option>' + protocols.map(p =>
-    `<option value="${p.id}">${p.name} · ${p.target_band} ${p.target_frequency_hz}Hz · ${p.duration_minutes}min</option>`
-  ).join('');
-}
-
-function wireSchedule() {
-  document.getElementById('btnSchedule').addEventListener('click', openScheduleModal);
-  document.getElementById('btnCancelSch').addEventListener('click', () => {
-    document.getElementById('scheduleModal').classList.remove('open');
-  });
-
-  document.getElementById('btnConfirmSch').addEventListener('click', async () => {
-    const protocolId = parseInt(document.getElementById('schProtocol').value, 10);
-    const when = document.getElementById('schWhen').value;
-    const coach = document.getElementById('schCoach').value.trim();
-    const source = document.getElementById('schSource').value;
-    const errEl = document.getElementById('scheduleErr');
-    errEl.innerHTML = '';
-
-    if (!protocolId || !when || !coach) {
-      errEl.innerHTML = '<div class="alert err">All fields required.</div>';
-      return;
-    }
-    try {
-      const r = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: clientId,
-          protocol_id: protocolId,
-          scheduled_at: new Date(when).toISOString(),
-          coach_staff_name: coach,
-          eeg_source: source,
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
-      document.getElementById('scheduleModal').classList.remove('open');
-      window.location.href = `/session/${data.session.id}/run`;
-    } catch (err) {
-      errEl.innerHTML = `<div class="alert err">${err.message}</div>`;
-    }
-  });
-}
-
-function openScheduleModal() {
-  if (!client) return;
-  const warnEl = document.getElementById('scheduleWarn');
-  warnEl.innerHTML = '';
-  if (client.medical_clearance_status !== 'cleared') {
-    warnEl.innerHTML = `<div class="gate-warn">MEDICAL CLEARANCE · ${client.medical_clearance_status.toUpperCase()} · CANNOT SCHEDULE</div>`;
-  }
-  if (!client.consent_signed_at) {
-    warnEl.innerHTML += `<div class="gate-warn">CONSENT NOT ON FILE · CANNOT SCHEDULE</div>`;
-  }
-  // Pre-fill datetime with tomorrow at 10am local
-  const t = new Date();
-  t.setDate(t.getDate() + 1);
-  t.setHours(10, 0, 0, 0);
-  document.getElementById('schWhen').value = t.toISOString().slice(0, 16);
-  document.getElementById('scheduleModal').classList.add('open');
-}
-
-document.getElementById('btnCopyPortal').addEventListener('click', async () => {
-  const url = document.getElementById('portalUrl').textContent;
-  try {
-    await navigator.clipboard.writeText(url);
-    const flash = document.getElementById('copiedFlash');
-    flash.style.display = 'inline-block';
-    setTimeout(() => flash.style.display = 'none', 2000);
-  } catch (err) {
-    alert('Copy failed: ' + err.message);
-  }
-});
-
-load();
-</script>
+<footer>
+  <a href="mailto:hello@dreamsonic.org">Contact</a>
+  <a href="https://halo.dreamsonic.org">Staff</a>
+</footer>
 </body>
 </html>
