@@ -85,6 +85,29 @@ const STATEMENTS = [
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
 
+  // EEG device registry — add new headset vendors by INSERT, no code change.
+  // channel_map is ordered 10-20 electrode names matching the device's raw
+  // channel index so the analysis engine can map semantic roles (left temporal,
+  // right frontal, etc.) without hardcoding any specific device.
+  `CREATE TABLE IF NOT EXISTS wellness_eeg_devices (
+    code                  TEXT PRIMARY KEY,
+    display_name          TEXT NOT NULL,
+    vendor                TEXT,
+    channel_count         INTEGER NOT NULL,
+    channel_map           JSONB NOT NULL,
+    sample_rate_hz        INTEGER NOT NULL,
+    max_safe_amplitude_uv INTEGER NOT NULL DEFAULT 200,
+    frontal_available     BOOLEAN NOT NULL DEFAULT FALSE,
+    connection_type       TEXT NOT NULL DEFAULT 'bluetooth'
+                          CHECK (connection_type IN ('bluetooth','usb','simulator','network')),
+    driver_module         TEXT,
+    notes                 TEXT,
+    active                BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_wellness_eeg_devices_active
+     ON wellness_eeg_devices(active) WHERE active = TRUE`,
+
   `CREATE TABLE IF NOT EXISTS wellness_sessions (
     id                    SERIAL PRIMARY KEY,
     client_id             INTEGER NOT NULL REFERENCES wellness_clients(id),
@@ -153,6 +176,12 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_wellness_session_notes_session
      ON wellness_session_notes(session_id)`,
+
+  // Late-added columns — idempotent, safe on every boot.
+  // eeg_device_code ties a session to a specific device in the registry.
+  // Existing sessions predating this column keep their legacy eeg_source text.
+  `ALTER TABLE wellness_sessions
+     ADD COLUMN IF NOT EXISTS eeg_device_code TEXT REFERENCES wellness_eeg_devices(code)`,
 ];
 
 async function init() {
