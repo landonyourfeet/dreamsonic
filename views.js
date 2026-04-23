@@ -34,6 +34,9 @@ function mount(app) {
   app.get('/session/:id/player', haloOnly, (req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, 'stimulation-player.html'));
   });
+  app.get('/attention-check', haloOnly, (req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'attention-check.html'));
+  });
 
   // --- Root routing: host-aware ---
   app.get('/', (req, res) => {
