@@ -239,11 +239,13 @@
     <label>Operator Name</label>
     <input type="text" id="schCoach" placeholder="e.g. Landon, Janelle, Jodi">
 
-    <label>EEG Source</label>
-    <select id="schSource">
-      <option value="simulator">simulator · no headband required</option>
-      <option value="bluetooth">bluetooth · brainbit headband</option>
+    <label>EEG Device</label>
+    <select id="schDevice">
+      <option value="">loading devices…</option>
     </select>
+    <div style="font-size:10px;color:var(--halo-dim);margin-top:3px;letter-spacing:1px;">
+      change anytime before session start
+    </div>
 
     <div style="display:flex;gap:10px;margin-top:22px;justify-content:flex-end;">
       <button class="btn" id="btnCancelSch">Cancel</button>
@@ -257,6 +259,7 @@
 const clientId = parseInt(window.location.pathname.match(/\/client\/(\d+)/)[1], 10);
 let client = null;
 let protocols = [];
+let devices = [];
 
 // Live UTC
 setInterval(() => {
@@ -266,20 +269,24 @@ setInterval(() => {
 
 async function load() {
   try {
-    const [cRes, pRes] = await Promise.all([
+    const [cRes, pRes, dRes] = await Promise.all([
       fetch(`/api/clients/${clientId}`),
       fetch('/api/protocols'),
+      fetch('/api/devices'),
     ]);
     const cData = await cRes.json();
     const pData = await pRes.json();
+    const dData = await dRes.json();
     if (!cRes.ok) throw new Error(cData.error);
     client = cData.client;
     const sessions = cData.sessions || [];
     protocols = pData.protocols || [];
+    devices = dData.devices || [];
 
     renderClient();
     renderSessions(sessions);
     fillProtocolDropdown();
+    fillDeviceDropdown();
     wireSchedule();
 
     if (new URLSearchParams(window.location.search).get('schedule') === '1') {
@@ -288,6 +295,20 @@ async function load() {
   } catch (err) {
     alert('Load failed: ' + err.message);
   }
+}
+
+function fillDeviceDropdown() {
+  const sel = document.getElementById('schDevice');
+  if (!sel) return;
+  sel.innerHTML = devices.map(d => {
+    const label = d.connection_type === 'simulator'
+      ? `${d.display_name} · no headband required`
+      : `${d.display_name} · ${d.channel_count}ch · ${d.connection_type}`;
+    return `<option value="${d.code}">${label}</option>`;
+  }).join('');
+  // Default to simulator for easy testing
+  const sim = devices.find(d => d.connection_type === 'simulator');
+  if (sim) sel.value = sim.code;
 }
 
 function renderClient() {
@@ -405,11 +426,11 @@ function wireSchedule() {
     const protocolId = parseInt(document.getElementById('schProtocol').value, 10);
     const when = document.getElementById('schWhen').value;
     const coach = document.getElementById('schCoach').value.trim();
-    const source = document.getElementById('schSource').value;
+    const deviceCode = document.getElementById('schDevice').value;
     const errEl = document.getElementById('scheduleErr');
     errEl.innerHTML = '';
 
-    if (!protocolId || !when || !coach) {
+    if (!protocolId || !when || !coach || !deviceCode) {
       errEl.innerHTML = '<div class="alert err">All fields required.</div>';
       return;
     }
@@ -422,7 +443,7 @@ function wireSchedule() {
           protocol_id: protocolId,
           scheduled_at: new Date(when).toISOString(),
           coach_staff_name: coach,
-          eeg_source: source,
+          eeg_device_code: deviceCode,
         }),
       });
       const data = await r.json();
