@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Halo · Pilot Cockpit</title>
+<link rel="stylesheet" href="/halo-core.css">
+<style>
+  body {
+    margin: 0;
+    background: var(--halo-void);
+    color: var(--halo-text);
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  .cockpit {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* --- Classification bar --- */
+  .class-bar {
+    background: var(--halo-deep);
+    border-bottom: 1px solid var(--halo-line);
+    padding: 6px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--halo-cyan);
+  }
+  .class-bar .dot {
+    display: inline-block; width: 6px; height: 6px;
+    background: var(--halo-cyan); border-radius: 50%;
+    margin-right: 6px;
+    box-shadow: 0 0 6px var(--halo-cyan);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .class-bar .session {
+    color: var(--halo-text-faint);
+    letter-spacing: 1.5px;
+  }
+  .class-bar .peer {
+    color: var(--halo-text-faint);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+  }
+  .class-bar .peer.connected { color: var(--halo-green); }
+
+  /* --- Mode row --- */
+  .mode-row {
+    display: flex;
+    gap: 1px;
+    background: var(--halo-line);
+    padding: 1px;
+  }
+  .mode-row .mode {
+    flex: 1;
+    background: var(--halo-panel);
+    padding: 18px 10px;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--halo-text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+    font-family: inherit;
+  }
+  .mode-row .mode:hover { background: var(--halo-panel-2); color: var(--halo-text); }
+  .mode-row .mode.active {
+    color: var(--halo-cyan);
+    background: var(--halo-panel-2);
+    box-shadow: inset 0 -2px 0 var(--halo-cyan);
+  }
+  .mode-row .mode.active.autopilot {
+    color: var(--halo-amber);
+    box-shadow: inset 0 -2px 0 var(--halo-amber);
+  }
+  .mode-row .mode.disabled {
+    color: var(--halo-text-faint); cursor: not-allowed;
+  }
+
+  /* --- Panel sections --- */
+  .panel {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--halo-line);
+  }
+  .panel-title {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--halo-text-dim);
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .panel-title .readout {
+    color: var(--halo-cyan);
+    font-size: 15px;
+    letter-spacing: 1.5px;
+    font-weight: 400;
+  }
+  .panel-title .readout.amber { color: var(--halo-amber); }
+
+  /* --- Slider --- */
+  .slider-wrap {
+    position: relative;
+    margin: 10px 0 6px;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--halo-deep);
+    border: 1px solid var(--halo-line);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px; height: 18px;
+    background: var(--halo-cyan);
+    border: 2px solid var(--halo-void);
+    border-radius: 50%;
+    cursor: grab;
+    box-shadow: 0 0 8px var(--halo-cyan);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 18px; height: 18px;
+    background: var(--halo-cyan);
+    border: 2px solid var(--halo-void);
+    border-radius: 50%;
+    cursor: grab;
+    box-shadow: 0 0 8px var(--halo-cyan);
+  }
+  input[type="range"].caution::-webkit-slider-thumb { background: var(--halo-amber); box-shadow: 0 0 8px var(--halo-amber); }
+  input[type="range"].caution::-moz-range-thumb { background: var(--halo-amber); box-shadow: 0 0 8px var(--halo-amber); }
+  input[type="range"]:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .slider-ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 8px;
+    color: var(--halo-text-faint);
+    letter-spacing: 1px;
+  }
+  .slider-ticks .tick.caution { color: var(--halo-amber); }
+
+  .band-markers {
+    position: relative;
+    height: 10px;
+    margin-top: 4px;
+  }
+  .band-marker {
+    position: absolute;
+    top: 0;
+    font-size: 8px;
+    color: var(--halo-text-faint);
+    letter-spacing: 1px;
+    transform: translateX(-50%);
+  }
+  .caution-zone {
+    position: absolute;
+    top: -14px;
+    right: 0;
+    width: 16%;
+    height: 8px;
+    background: repeating-linear-gradient(
+      45deg,
+      transparent, transparent 3px,
+      rgba(255, 170, 0, 0.2) 3px, rgba(255, 170, 0, 0.2) 6px
+    );
+    pointer-events: none;
+  }
+
+  /* --- Verbal cue buttons --- */
+  .cue-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .cue-btn {
+    padding: 16px 8px;
+    background: var(--halo-panel);
+    border: 1px solid var(--halo-line);
+    color: var(--halo-text);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .cue-btn:hover { border-color: var(--halo-line-hot); background: var(--halo-panel-2); }
+  .cue-btn.flash { animation: flash 0.5s ease; }
+  @keyframes flash {
+    0% { background: var(--halo-panel); }
+    50% { background: var(--halo-cyan-deep); }
+    100% { background: var(--halo-panel); }
+  }
+  .cue-btn .label { display: block; margin-bottom: 4px; }
+  .cue-btn.too-intense { border-left: 2px solid var(--halo-red); }
+  .cue-btn.just-right  { border-left: 2px solid var(--halo-green); }
+  .cue-btn.more        { border-left: 2px solid var(--halo-amber); }
+
+  /* --- ABORT --- */
+  .abort-wrap {
+    margin-top: auto;
+    padding: 14px 20px;
+    background: var(--halo-void);
+  }
+  .abort-btn {
+    display: block;
+    width: 100%;
+    padding: 20px;
+    background: var(--halo-void);
+    border: 2px solid var(--halo-red);
+    color: var(--halo-red);
+    font-family: inherit;
+    font-size: 14px;
+    letter-spacing: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    background-image: repeating-linear-gradient(
+      135deg,
+      transparent, transparent 12px,
+      rgba(255, 48, 80, 0.08) 12px, rgba(255, 48, 80, 0.08) 24px
+    );
+  }
+  .abort-btn:hover {
+    background: var(--halo-red);
+    color: var(--halo-void);
+    box-shadow: 0 0 20px rgba(255, 48, 80, 0.4);
+  }
+  .abort-btn:active { transform: scale(0.98); }
+
+  /* --- Engine status ticker --- */
+  .engine-status {
+    background: var(--halo-deep);
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--halo-line);
+    font-size: 10px;
+    color: var(--halo-text-dim);
+    display: flex;
+    justify-content: space-between;
+    letter-spacing: 1px;
+  }
+  .engine-status .action { color: var(--halo-cyan); font-size: 10px; }
+  .engine-status .action.amber { color: var(--halo-amber); }
+
+  .disconnected {
+    background: var(--halo-red);
+    color: white;
+    padding: 8px;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 2px;
+    display: none;
+  }
+  .disconnected.show { display: block; }
+
+  /* Copilot visualization */
+  .copilot-bars {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 10px;
+  }
+  .copilot-bar {
+    text-align: center;
+  }
+  .copilot-bar .val {
+    font-size: 22px;
+    color: var(--halo-amber);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  .copilot-bar.driver .val { color: var(--halo-cyan); }
+  .copilot-bar .lbl {
+    font-size: 8px;
+    color: var(--halo-text-faint);
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="cockpit">
+
+  <div class="class-bar">
+    <div>
+      <span class="dot"></span>
+      HALO · PILOT COCKPIT · CLASSIFIED
+    </div>
+    <div class="session" id="sessionReadout">—</div>
+    <div class="peer" id="peerStatus">◌ ORB OFFLINE</div>
+  </div>
+
+  <div class="disconnected" id="discBanner">◌ SERVER LINK LOST · RECONNECTING</div>
+
+  <div class="mode-row">
+    <button class="mode active" data-mode="manual" id="modeManual">◂ MANUAL</button>
+    <button class="mode" data-mode="autopilot" id="modeAutopilot">▸ AUTOPILOT</button>
+  </div>
+
+  <div class="engine-status">
+    <div>ENGINE STATE</div>
+    <div class="action" id="engineAction">HOLDING</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <span>FREQUENCY</span>
+      <span class="readout" id="freqReadout">10.0 Hz</span>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="freqSlider" min="2" max="14" step="0.1" value="10">
+      <div class="caution-zone" title="Caution zone — monitor client carefully"></div>
+    </div>
+    <div class="band-markers">
+      <span class="band-marker" style="left: 16.7%;">δ</span>
+      <span class="band-marker" style="left: 41.7%;">θ</span>
+      <span class="band-marker" style="left: 70.8%;">α</span>
+      <span class="band-marker" style="left: 87.5%;">SMR</span>
+    </div>
+    <div class="slider-ticks">
+      <span class="tick">2Hz</span>
+      <span class="tick">8Hz</span>
+      <span class="tick caution">14Hz ⚠</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <span>INTENSITY</span>
+      <span class="readout" id="intReadout">50%</span>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="intSlider" min="0" max="100" step="1" value="50">
+    </div>
+    <div class="slider-ticks">
+      <span class="tick">0</span>
+      <span class="tick">50%</span>
+      <span class="tick">100%</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <span>COPILOT SHARE</span>
+      <span class="readout amber" id="copReadout">100%</span>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="copSlider" min="0" max="100" step="5" value="100">
+    </div>
+    <div class="copilot-bars">
+      <div class="copilot-bar">
+        <div class="val" id="assistVal">100%</div>
+        <div class="lbl">AUTOPILOT ASSIST</div>
+      </div>
+      <div class="copilot-bar driver">
+        <div class="val" id="drivingVal">0%</div>
+        <div class="lbl">CLIENT DRIVING</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <span>CLIENT SAYS</span>
+      <span style="font-size: 9px; color: var(--halo-text-faint);">logs to session timeline</span>
+    </div>
+    <div class="cue-grid">
+      <button class="cue-btn too-intense" data-cue="too_intense">
+        <span class="label">◂ TOO</span>INTENSE
+      </button>
+      <button class="cue-btn just-right" data-cue="just_right">
+        <span class="label">✓ JUST</span>RIGHT
+      </button>
+      <button class="cue-btn more" data-cue="more_please">
+        <span class="label">▸ MORE</span>PLEASE
+      </button>
+    </div>
+  </div>
+
+  <div class="abort-wrap">
+    <button class="abort-btn" id="abortBtn">⏹ ABORT SEQUENCE</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================================
+// PILOT COCKPIT
+//
+// Operator control window that commands the stimulation player over WebSocket.
+// Safety-wise, this window NEVER bypasses the server-side or player-side safety
+// clamps. Sliders are range-capped in the UI, the server clamps again on relay,
+// and the player clamps again at render time. Three layers, not one.
+// ============================================================================
+
+const params = new URLSearchParams(location.search);
+const sessionId = parseInt(params.get('session') || '0', 10);
+
+// Current state
+let mode = 'manual';
+let currentFreq = 10.0;
+let currentIntensity = 50;
+let currentCopilot = 100;
+let ws = null;
+let wsReconnectDelay = 1000;
+let orbConnected = false;
+
+// --- UI references ---
+const $ = (id) => document.getElementById(id);
+const freqSlider = $('freqSlider');
+const intSlider  = $('intSlider');
+const copSlider  = $('copSlider');
+
+$('sessionReadout').textContent = sessionId ? '0x' + sessionId.toString(16).padStart(4,'0').toUpperCase() : 'NO SESSION';
+
+// ============================================================================
+// WEBSOCKET
+// ============================================================================
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    wsReconnectDelay = 1000;
+    $('discBanner').classList.remove('show');
+    ws.send(JSON.stringify({ type: 'join', session_id: sessionId, role: 'controller' }));
+  };
+
+  ws.onmessage = (evt) => {
+    let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+    if (msg.type === 'joined') {
+      // Check if orb (player) is already in the room
+      const hasPlayer = (msg.members || []).includes('player');
+      setOrbPeerStatus(hasPlayer);
+    } else if (msg.type === 'peer_joined' && msg.role === 'player') {
+      setOrbPeerStatus(true);
+      // Re-send current manual state so the orb syncs immediately
+      if (mode === 'manual') sendManualDirective();
+    } else if (msg.type === 'peer_left' && msg.role === 'player') {
+      setOrbPeerStatus(false);
+    } else if (msg.type === 'player_state') {
+      // Orb reports back its actual values — use as confirmation/telemetry
+      updateEngineStatus(msg.payload);
+    }
+  };
+
+  ws.onclose = () => {
+    $('discBanner').classList.add('show');
+    setOrbPeerStatus(false);
+    setTimeout(connect, wsReconnectDelay);
+    wsReconnectDelay = Math.min(10000, wsReconnectDelay * 1.5);
+  };
+
+  ws.onerror = () => { /* onclose handles it */ };
+}
+
+function sendWS(msg) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify({ session_id: sessionId, ...msg }));
+  return true;
+}
+
+function setOrbPeerStatus(connected) {
+  orbConnected = connected;
+  const el = $('peerStatus');
+  if (connected) {
+    el.textContent = '● ORB CONNECTED';
+    el.classList.add('connected');
+  } else {
+    el.textContent = '◌ ORB OFFLINE';
+    el.classList.remove('connected');
+  }
+}
+
+function updateEngineStatus(payload) {
+  if (!payload) return;
+  // When in autopilot, the engine's state flows through here
+  if (payload.state) {
+    $('engineAction').textContent = payload.state;
+  }
+}
+
+// ============================================================================
+// DIRECTIVES
+// ============================================================================
+
+function sendManualDirective() {
+  sendWS({
+    type: 'directive',
+    payload: {
+      frequencyHz: currentFreq,
+      intensityPct: currentIntensity,
+      action: 'MANUAL_INPUT',
+      reason: 'Operator joystick input',
+      source: 'manual',
+    },
+  });
+  $('engineAction').textContent = 'MANUAL · ' + currentFreq.toFixed(1) + 'Hz @ ' + currentIntensity + '%';
+  $('engineAction').classList.remove('amber');
+}
+
+function sendModeChange(m, extra = {}) {
+  sendWS({
+    type: 'mode_change',
+    payload: { mode: m, copilot_share: currentCopilot, ...extra },
+  });
+}
+
+function sendVerbalCue(cue) {
+  sendWS({
+    type: 'verbal_cue',
+    payload: { cue, timestamp: Date.now(),
+               at_freq: currentFreq, at_intensity: currentIntensity },
+  });
+  // Also log to session events via REST so it persists even if WS drops
+  fetch(`/api/sessions/${sessionId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event_type: 'verbal_cue',
+      metadata: { cue, at_freq: currentFreq, at_intensity: currentIntensity,
+                  mode, copilot_share: currentCopilot },
+    }),
+  }).catch(() => {});
+}
+
+// ============================================================================
+// MODE TOGGLE
+// ============================================================================
+
+function setMode(newMode) {
+  mode = newMode;
+  $('modeManual').classList.toggle('active', newMode === 'manual');
+  $('modeAutopilot').classList.toggle('active', newMode === 'autopilot');
+  $('modeAutopilot').classList.toggle('autopilot', newMode === 'autopilot');
+
+  // Disable/enable sliders based on mode
+  freqSlider.disabled = (newMode === 'autopilot');
+  intSlider.disabled  = (newMode === 'autopilot');
+
+  sendModeChange(newMode);
+
+  if (newMode === 'manual') {
+    sendManualDirective();  // immediately re-assert current values
+  } else {
+    $('engineAction').textContent = 'AUTOPILOT ENGAGED';
+    $('engineAction').classList.add('amber');
+  }
+}
+
+$('modeManual').addEventListener('click', () => setMode('manual'));
+$('modeAutopilot').addEventListener('click', () => setMode('autopilot'));
+
+// Clicking any slider while in autopilot grabs manual control back
+function grabManual() {
+  if (mode !== 'manual') setMode('manual');
+}
+
+// ============================================================================
+// SLIDERS
+// ============================================================================
+
+let sliderSendThrottle = null;
+function throttledSend() {
+  if (sliderSendThrottle) return;
+  sliderSendThrottle = setTimeout(() => {
+    sliderSendThrottle = null;
+    if (mode === 'manual') sendManualDirective();
+  }, 80);  // ~12Hz slider update rate, smooth but not spammy
+}
+
+freqSlider.addEventListener('pointerdown', grabManual);
+freqSlider.addEventListener('input', (e) => {
+  currentFreq = parseFloat(e.target.value);
+  $('freqReadout').textContent = currentFreq.toFixed(1) + ' Hz';
+  // Caution zone visual feedback
+  if (currentFreq >= 13.0) freqSlider.classList.add('caution');
+  else freqSlider.classList.remove('caution');
+  throttledSend();
+});
+
+intSlider.addEventListener('pointerdown', grabManual);
+intSlider.addEventListener('input', (e) => {
+  currentIntensity = parseInt(e.target.value, 10);
+  $('intReadout').textContent = currentIntensity + '%';
+  throttledSend();
+});
+
+copSlider.addEventListener('input', (e) => {
+  currentCopilot = parseInt(e.target.value, 10);
+  $('copReadout').textContent = currentCopilot + '%';
+  $('assistVal').textContent = currentCopilot + '%';
+  $('drivingVal').textContent = (100 - currentCopilot) + '%';
+  // Copilot share is a mode metadata field, not a directive, so we send it via mode_change
+  sendModeChange(mode);
+});
+
+// ============================================================================
+// VERBAL CUES
+// ============================================================================
+
+document.querySelectorAll('.cue-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const cue = btn.dataset.cue;
+    btn.classList.remove('flash');
+    void btn.offsetWidth;  // restart animation
+    btn.classList.add('flash');
+    sendVerbalCue(cue);
+    // Auto-response: operator-friendly adjustment nudges based on cue
+    // These are suggestions, the operator sees them and can reject
+    if (cue === 'too_intense' && mode === 'manual') {
+      // Gentle manual nudge downward
+      currentIntensity = Math.max(0, currentIntensity - 10);
+      intSlider.value = currentIntensity;
+      $('intReadout').textContent = currentIntensity + '%';
+      sendManualDirective();
+    } else if (cue === 'more_please' && mode === 'manual') {
+      currentIntensity = Math.min(100, currentIntensity + 10);
+      intSlider.value = currentIntensity;
+      $('intReadout').textContent = currentIntensity + '%';
+      sendManualDirective();
+    }
+  });
+});
+
+// ============================================================================
+// ABORT
+// ============================================================================
+
+$('abortBtn').addEventListener('click', () => {
+  if (!confirm('ABORT SEQUENCE?\n\nThis will fade the stimulation to black over 10 seconds and halt the session.')) {
+    return;
+  }
+  sendWS({
+    type: 'mode_change',
+    payload: { mode: 'abort', reason: 'Operator abort from cockpit' },
+  });
+  // Also log to session timeline
+  fetch(`/api/sessions/${sessionId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event_type: 'abort_from_cockpit',
+      metadata: { at_freq: currentFreq, at_intensity: currentIntensity, mode },
+    }),
+  }).catch(() => {});
+
+  $('abortBtn').textContent = '⏹ ABORTED';
+  $('abortBtn').disabled = true;
+  $('engineAction').textContent = 'ABORTED · FADE TO BLACK';
+  $('engineAction').classList.add('amber');
+});
+
+// ============================================================================
+// BOOT
+// ============================================================================
+
+// Initialize copilot readouts
+$('assistVal').textContent  = currentCopilot + '%';
+$('drivingVal').textContent = (100 - currentCopilot) + '%';
+
+// Prevent accidental close
+window.addEventListener('beforeunload', (e) => {
+  if (mode !== 'manual' || currentIntensity > 10) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+connect();
+// After connect, assert initial manual state so orb is synced
+setTimeout(() => { if (mode === 'manual') sendManualDirective(); }, 500);
+</script>
+
+</body>
+</html>
