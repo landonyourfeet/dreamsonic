@@ -60,11 +60,13 @@ const clients   = require('./routes/clients');
 const protocols = require('./routes/protocols');
 const sessions  = require('./routes/sessions');
 const progress  = require('./routes/progress');
+const packet    = require('./routes/packet');
 
 app.use('/api', apiHostGate, clients);
 app.use('/api', apiHostGate, protocols);
 app.use('/api', apiHostGate, sessions);
 app.use('/api', apiHostGate, progress);
+app.use('/api', apiHostGate, packet);
 
 // --- Views + static assets (host-aware) -----------------------------------
 require('./views').mount(app);
