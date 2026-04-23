@@ -3,326 +3,492 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wellness Session Runner</title>
+<title>Project Halo · Session Runner</title>
+<link rel="stylesheet" href="/static/halo-core.css">
 <script src="/static/eeg-source.js"></script>
 <style>
-  :root {
-    --bg: #0a0f1a;
-    --panel: #0f1624;
-    --panel-2: #121c2e;
-    --border: #1d2a42;
-    --text: #d8e3f3;
-    --text-dim: #6a7a92;
-    --cyan: #22d3ee;
-    --green: #34d399;
-    --amber: #f59e0b;
-    --red: #ef4444;
-    --purple: #a78bfa;
-    --mono: 'SFMono-Regular','Consolas','Menlo',monospace;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 14px;
-    height: 100vh; overflow: hidden;
-  }
+  html, body { height: 100%; overflow: hidden; }
+
   .grid {
     display: grid;
     grid-template-columns: 320px 1fr 320px;
-    grid-template-rows: 56px 1fr 180px;
-    height: 100vh; gap: 1px;
-    background: var(--border);
+    grid-template-rows: 28px 60px 1fr 92px;
+    height: 100vh;
+    gap: 1px;
+    background: var(--halo-line);
   }
-  .header {
-    grid-column: 1 / 4;
-    background: var(--panel);
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 20px;
-  }
-  .header .brand {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 2px;
-    color: var(--cyan);
-    text-transform: uppercase;
-  }
-  .header .status-pills { display: flex; gap: 8px; }
-  .pill {
-    font-family: var(--mono);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    padding: 4px 10px;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    background: var(--panel-2);
-  }
-  .pill.ok { color: var(--green); border-color: var(--green); }
-  .pill.warn { color: var(--amber); border-color: var(--amber); }
-  .pill.err { color: var(--red); border-color: var(--red); }
-  .pill.idle { color: var(--text-dim); }
+  .classification { grid-column: 1 / 4; }
+  .console-header  { grid-column: 1 / 4; }
 
-  .panel { background: var(--panel); padding: 18px; overflow: auto; }
+  .panel {
+    background: var(--halo-panel);
+    padding: 18px;
+    overflow: auto;
+  }
 
+  /* LEFT: Dossier */
   .left .section { margin-bottom: 22px; }
   .section h3 {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 2px;
-    color: var(--text-dim);
-    text-transform: uppercase;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+    color: var(--halo-cyan); text-transform: uppercase;
     margin: 0 0 10px;
-    border-bottom: 1px solid var(--border);
     padding-bottom: 6px;
+    border-bottom: 1px solid var(--halo-line);
+    display: flex; justify-content: space-between;
   }
-  .kv { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-  .kv .k { color: var(--text-dim); }
-  .kv .v { font-family: var(--mono); color: var(--cyan); }
+  .section h3 .meta { color: var(--halo-text-faint); font-size: 9px; letter-spacing: 1px; }
+  .dossier-avatar {
+    width: 80px; height: 80px;
+    border: 1px solid var(--halo-cyan);
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 32px;
+    color: var(--halo-cyan); letter-spacing: 2px;
+    margin: 0 auto 14px;
+    position: relative;
+    box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.15);
+  }
+  .dossier-avatar::before, .dossier-avatar::after {
+    content: ''; position: absolute;
+    width: 8px; height: 8px; border: 1px solid var(--halo-cyan);
+  }
+  .dossier-avatar::before { top: -3px; left: -3px; border-right: none; border-bottom: none; }
+  .dossier-avatar::after  { bottom: -3px; right: -3px; border-left: none; border-top: none; }
 
-  .center { background: var(--panel); display: flex; flex-direction: column; }
+  /* CENTER: Live */
+  .center {
+    background: var(--halo-deep);
+    display: flex; flex-direction: column;
+    padding: 0; overflow: hidden;
+  }
   .timer-wrap {
-    padding: 24px 20px;
-    border-bottom: 1px solid var(--border);
-    text-align: center;
-  }
-  .phase-label {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 3px;
-    color: var(--cyan); text-transform: uppercase; margin-bottom: 8px;
-  }
-  .timer {
-    font-family: var(--mono); font-size: 52px; font-weight: 300;
-    color: var(--text); letter-spacing: 2px;
-  }
-  .timer-sub {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
-    color: var(--text-dim); margin-top: 4px;
-  }
-
-  .viz-area { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
-  .waveform-box {
-    flex: 1;
-    background: #05080f;
-    border: 1px solid var(--border);
-    border-radius: 2px;
+    padding: 20px;
+    border-bottom: 1px solid var(--halo-line);
+    display: grid; grid-template-columns: 200px 1fr 200px;
+    gap: 20px; align-items: center;
     position: relative;
   }
-  .waveform-box canvas { width: 100%; height: 100%; display: block; }
-  .ch-labels {
-    position: absolute; left: 8px; top: 8px;
-    font-family: var(--mono); font-size: 9px;
-    color: var(--text-dim); letter-spacing: 1.5px;
+  .timer-meta-left, .timer-meta-right {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+    color: var(--halo-text-faint); text-transform: uppercase;
     line-height: 1.8;
   }
+  .timer-meta-right { text-align: right; }
+  .timer-meta-left  .v, .timer-meta-right .v {
+    color: var(--halo-cyan); letter-spacing: 1px;
+  }
 
+  .timer-ring {
+    width: 200px; height: 200px; margin: 0 auto;
+    position: relative;
+  }
+  .timer-ring svg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+  .ring-outer { animation: halo-rotate 120s linear infinite; transform-origin: center; }
+  .ring-ticks { animation: halo-rotate 240s linear infinite reverse; transform-origin: center; }
+  @keyframes halo-rotate { to { transform: rotate(360deg); } }
+
+  .timer-text {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .timer-phase {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 3px;
+    color: var(--halo-cyan); text-transform: uppercase;
+    text-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
+    margin-bottom: 4px;
+  }
+  .timer-digits {
+    font-family: var(--mono); font-size: 40px; font-weight: 300;
+    color: var(--halo-text); letter-spacing: 2px;
+    text-shadow: 0 0 12px rgba(214, 232, 255, 0.3);
+    animation: halo-flicker 5s infinite;
+  }
+  .timer-sub {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 1.5px;
+    color: var(--halo-text-faint); text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  .viz-area {
+    flex: 1;
+    padding: 16px 20px 20px;
+    display: flex; flex-direction: column;
+    gap: 14px; min-height: 0;
+  }
+  .waveform-box {
+    flex: 1;
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    position: relative;
+    overflow: hidden;
+    min-height: 140px;
+  }
+  .waveform-box::before, .waveform-box::after,
+  .waveform-box > .corners::before, .waveform-box > .corners::after {
+    content: ''; position: absolute;
+    width: 8px; height: 8px;
+    border: 0 solid var(--halo-cyan); pointer-events: none;
+  }
+  .waveform-box::before { top: -1px; left: -1px; border-top-width: 1px; border-left-width: 1px; }
+  .waveform-box::after { top: -1px; right: -1px; border-top-width: 1px; border-right-width: 1px; }
+  .waveform-box > .corners { position: absolute; inset: 0; pointer-events: none; }
+  .waveform-box > .corners::before { bottom: -1px; left: -1px; border-bottom-width: 1px; border-left-width: 1px; }
+  .waveform-box > .corners::after  { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
+
+  .waveform-box canvas { width: 100%; height: 100%; display: block; }
+  .ch-labels {
+    position: absolute; left: 10px; top: 10px;
+    font-family: var(--mono); font-size: 9px;
+    color: var(--halo-text-faint); letter-spacing: 2px;
+    line-height: 2;
+  }
+  .ch-labels div { display: flex; align-items: center; gap: 6px; }
+  .ch-dot { width: 6px; height: 6px; }
+  .ch-dot.ch-0 { background: #00d4ff; box-shadow: 0 0 4px #00d4ff; }
+  .ch-dot.ch-1 { background: #00ff88; box-shadow: 0 0 4px #00ff88; }
+  .ch-dot.ch-2 { background: #aa66ff; box-shadow: 0 0 4px #aa66ff; }
+  .ch-dot.ch-3 { background: #ffaa00; box-shadow: 0 0 4px #ffaa00; }
+
+  .waveform-overlay {
+    position: absolute; top: 10px; right: 14px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 1.5px;
+    color: var(--halo-text-faint); text-transform: uppercase;
+    text-align: right;
+  }
+  .waveform-overlay .live-dot {
+    display: inline-block; width: 6px; height: 6px;
+    background: var(--halo-red); border-radius: 50%;
+    margin-right: 4px;
+    animation: halo-pulse 1.4s ease-in-out infinite;
+  }
+
+  /* Band HUD */
   .bands {
-    display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
-    padding: 14px;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+    padding: 14px 16px;
+    background: var(--halo-panel);
+    border: 1px solid var(--halo-line);
+    position: relative;
   }
-  .band {
-    text-align: center;
-    font-family: var(--mono);
+  .bands::before, .bands::after,
+  .bands > .corners::before, .bands > .corners::after {
+    content: ''; position: absolute;
+    width: 8px; height: 8px;
+    border: 0 solid var(--halo-cyan); pointer-events: none;
   }
+  .bands::before { top: -1px; left: -1px; border-top-width: 1px; border-left-width: 1px; }
+  .bands::after  { top: -1px; right: -1px; border-top-width: 1px; border-right-width: 1px; }
+  .bands > .corners { position: absolute; inset: 0; pointer-events: none; }
+  .bands > .corners::before { bottom: -1px; left: -1px; border-bottom-width: 1px; border-left-width: 1px; }
+  .bands > .corners::after  { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
+
+  .band { text-align: center; font-family: var(--mono); }
   .band-name {
-    font-size: 9px; letter-spacing: 2px; color: var(--text-dim);
+    font-size: 9px; letter-spacing: 2px; color: var(--halo-text-faint);
     text-transform: uppercase; margin-bottom: 4px;
   }
-  .band-val {
-    font-size: 14px; color: var(--text);
-    padding: 4px 0;
+  .band-val { font-size: 14px; color: var(--halo-text); padding: 3px 0; }
+  .band-bar-wrap {
+    height: 42px; background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    position: relative; overflow: hidden;
   }
-  .band-bar {
-    height: 4px; background: #0a1020; border-radius: 2px; overflow: hidden;
+  .band-bar-wrap::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(
+      to top,
+      transparent 0px, transparent 6px,
+      rgba(22, 48, 79, 0.3) 6px, rgba(22, 48, 79, 0.3) 7px
+    );
+    pointer-events: none;
   }
-  .band-fill { height: 100%; background: var(--cyan); transition: width .2s; }
-  .band.target .band-fill { background: var(--green); }
-  .band.target .band-name { color: var(--green); }
+  .band-fill {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: var(--halo-cyan); height: 0%;
+    transition: height 0.25s ease-out;
+    box-shadow: 0 0 8px var(--halo-cyan);
+  }
+  .band.target .band-fill {
+    background: var(--halo-green);
+    box-shadow: 0 0 10px var(--halo-green);
+  }
+  .band.target .band-name { color: var(--halo-green); text-shadow: 0 0 6px rgba(0, 255, 136, 0.5); }
 
-  .right .section h3 { margin-bottom: 12px; }
+  /* RIGHT: Telemetry */
   .event-log {
-    background: #05080f;
-    border: 1px solid var(--border);
-    padding: 10px;
-    height: 260px;
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    padding: 10px 12px;
+    height: 340px;
     overflow-y: auto;
-    font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.6;
+    font-family: var(--mono); font-size: 10px;
+    line-height: 1.9; letter-spacing: 0.3px;
+    position: relative;
   }
-  .event-log .evt { padding: 2px 0; color: var(--text-dim); }
-  .event-log .evt .t { color: var(--purple); }
-  .event-log .evt .m { color: var(--text); }
+  .evt { padding: 2px 0; color: var(--halo-text-dim); }
+  .evt .t { color: var(--halo-purple); margin-right: 6px; }
+  .evt .m { color: var(--halo-text); }
+  .evt .lv-ok   { color: var(--halo-green); }
+  .evt .lv-warn { color: var(--halo-amber); }
+  .evt .lv-err  { color: var(--halo-red); }
 
+  /* FOOTER */
   .footer {
     grid-column: 1 / 4;
-    background: var(--panel);
-    padding: 16px 20px;
-    display: flex; gap: 12px; align-items: center; justify-content: space-between;
+    background: var(--halo-deep);
+    padding: 18px 24px;
+    display: flex; align-items: center; justify-content: space-between;
   }
-  .btn {
-    padding: 10px 18px;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--mono); font-size: 11px; letter-spacing: 1.5px;
-    text-transform: uppercase; cursor: pointer;
-    border-radius: 2px;
-  }
-  .btn:hover { border-color: var(--cyan); color: var(--cyan); }
-  .btn.primary { background: var(--cyan); color: #000; border-color: var(--cyan); font-weight: 600; }
-  .btn.primary:hover { background: #67e8f9; }
-  .btn.danger {
-    background: var(--red); color: #fff; border-color: var(--red);
-    font-weight: 600; font-size: 13px; padding: 14px 28px;
-  }
-  .btn.danger:hover { background: #f87171; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .footer-left { display: flex; gap: 10px; }
 
-  /* Modal */
+  /* Pills/status in header */
+  .hd-pill {
+    font-family: var(--mono); font-size: 10px;
+    padding: 4px 10px; border: 1px solid;
+    letter-spacing: 1.5px; text-transform: uppercase;
+  }
+  .hd-pill.ok   { color: var(--halo-green); border-color: var(--halo-green); }
+  .hd-pill.warn { color: var(--halo-amber); border-color: var(--halo-amber); }
+  .hd-pill.err  { color: var(--halo-red); border-color: var(--halo-red); }
+  .hd-pill.idle { color: var(--halo-text-faint); border-color: var(--halo-text-faint); }
+
+  /* Modals */
   .modal-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.75);
+    position: fixed; inset: 0; background: rgba(2, 5, 10, 0.85);
+    backdrop-filter: blur(4px);
     display: none; align-items: center; justify-content: center;
     z-index: 100;
   }
   .modal-backdrop.open { display: flex; }
   .modal {
-    background: var(--panel);
-    border: 1px solid var(--border);
+    background: var(--halo-panel);
+    border: 1px solid var(--halo-cyan);
+    box-shadow: 0 0 40px rgba(0, 212, 255, 0.2);
     width: 100%; max-width: 480px;
-    padding: 28px;
-    border-radius: 2px;
+    padding: 28px; position: relative;
   }
+  .modal::before, .modal::after,
+  .modal > .corners::before, .modal > .corners::after {
+    content: ''; position: absolute;
+    width: 12px; height: 12px;
+    border: 0 solid var(--halo-cyan);
+  }
+  .modal::before { top: -1px; left: -1px; border-top-width: 1px; border-left-width: 1px; }
+  .modal::after { top: -1px; right: -1px; border-top-width: 1px; border-right-width: 1px; }
+  .modal > .corners { position: absolute; inset: 0; pointer-events: none; }
+  .modal > .corners::before { bottom: -1px; left: -1px; border-bottom-width: 1px; border-left-width: 1px; }
+  .modal > .corners::after  { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
+
   .modal h2 {
-    font-family: var(--mono); font-size: 12px; letter-spacing: 2px;
-    color: var(--cyan); text-transform: uppercase; margin: 0 0 20px;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 3px;
+    color: var(--halo-cyan); text-transform: uppercase;
+    margin: 0 0 18px;
   }
-  .modal label {
-    display: block;
-    font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
-    color: var(--text-dim); text-transform: uppercase; margin: 14px 0 6px;
-  }
-  .scale {
-    display: flex; gap: 4px;
-  }
+  .scale { display: flex; gap: 3px; }
   .scale button {
     flex: 1;
     padding: 10px 0;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--mono);
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    color: var(--halo-text);
+    font-family: var(--mono); font-size: 12px;
     cursor: pointer;
+    transition: all 0.12s;
   }
-  .scale button.on { background: var(--cyan); color: #000; border-color: var(--cyan); font-weight: 600; }
-  .note-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 180px; overflow-y: auto; }
+  .scale button:hover { border-color: var(--halo-cyan); color: var(--halo-cyan); }
+  .scale button.on {
+    background: rgba(0, 212, 255, 0.2);
+    border-color: var(--halo-cyan);
+    color: var(--halo-cyan);
+    text-shadow: 0 0 6px rgba(0, 212, 255, 0.6);
+  }
+  .note-chips {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    max-height: 180px; overflow-y: auto;
+  }
   .chip {
     padding: 6px 10px;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    font-size: 11px;
-    cursor: pointer;
-    border-radius: 12px;
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    font-family: var(--mono); font-size: 10px;
+    color: var(--halo-text-dim); cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.12s;
   }
-  .chip.on { background: var(--purple); color: #fff; border-color: var(--purple); }
+  .chip:hover { border-color: var(--halo-cyan); color: var(--halo-cyan); }
+  .chip.on {
+    background: rgba(170, 102, 255, 0.15);
+    border-color: var(--halo-purple);
+    color: var(--halo-purple);
+  }
 
   .gate-warn {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid var(--red);
-    color: #fca5a5;
+    background: rgba(255, 48, 80, 0.1);
+    border: 1px solid var(--halo-red);
+    color: #ff8899;
     padding: 10px 12px;
-    font-size: 12px;
+    font-family: var(--mono); font-size: 11px;
     margin-bottom: 14px;
+    letter-spacing: 0.5px;
   }
 </style>
 </head>
 <body>
 <div class="grid">
 
-  <div class="header">
-    <div class="brand">DREAMSONIC · SESSION RUNNER</div>
-    <div class="status-pills">
-      <span id="eegStatus" class="pill idle">EEG: idle</span>
-      <span id="sessionStatus" class="pill idle">session: loading</span>
+  <div class="classification">
+    <div>
+      <span class="dot"></span>PROJECT HALO · SESSION RUNNER · CLASSIFIED
+    </div>
+    <div class="meta">
+      SESSION <span id="hdrSessionId">—</span> · <span id="hdrUTC">—</span>
     </div>
   </div>
 
-  <!-- LEFT: client info -->
+  <div class="console-header">
+    <div class="halo-brand">
+      HALO<span class="slash">//</span><span class="sub">LIVE SESSION</span>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <span id="eegStatus" class="hd-pill idle">EEG · IDLE</span>
+      <span id="sessionStatus" class="hd-pill idle">SESSION · LOADING</span>
+    </div>
+  </div>
+
+  <!-- LEFT: Client dossier -->
   <div class="panel left">
     <div class="section">
-      <h3>Client</h3>
+      <h3><span>Subject Dossier</span><span class="meta">CLEARED</span></h3>
       <div id="clientInfo">loading…</div>
     </div>
     <div class="section">
-      <h3>Protocol</h3>
+      <h3><span>Protocol</span><span class="meta" id="protocolMeta">—</span></h3>
       <div id="protocolInfo">loading…</div>
     </div>
     <div class="section">
-      <h3>Pre-Session Report</h3>
+      <h3><span>Pre-Session</span><span class="meta">BASELINE</span></h3>
       <div id="preReport">—</div>
     </div>
   </div>
 
-  <!-- CENTER: live data -->
+  <!-- CENTER: Live data -->
   <div class="center">
     <div class="timer-wrap">
-      <div class="phase-label" id="phaseLabel">READY</div>
-      <div class="timer" id="timer">00:00</div>
-      <div class="timer-sub" id="timerSub">press start to begin baseline</div>
+      <div class="timer-meta-left">
+        <div>EEG SOURCE</div>
+        <div class="v" id="sourceVal">simulator</div>
+        <div style="margin-top:6px;">SAMPLES/S</div>
+        <div class="v" id="sampleRate">0</div>
+      </div>
+
+      <div class="timer-ring">
+        <svg viewBox="0 0 200 200" class="ring-outer">
+          <circle cx="100" cy="100" r="94" fill="none"
+                  stroke="rgba(0, 212, 255, 0.15)" stroke-width="1"
+                  stroke-dasharray="4 8"/>
+        </svg>
+        <svg viewBox="0 0 200 200" class="ring-ticks">
+          <g stroke="rgba(0, 212, 255, 0.35)" stroke-width="1">
+            <line x1="100" y1="2" x2="100" y2="12"/>
+            <line x1="100" y1="188" x2="100" y2="198"/>
+            <line x1="2" y1="100" x2="12" y2="100"/>
+            <line x1="188" y1="100" x2="198" y2="100"/>
+            <line x1="30" y1="30" x2="37" y2="37"/>
+            <line x1="170" y1="30" x2="163" y2="37"/>
+            <line x1="30" y1="170" x2="37" y2="163"/>
+            <line x1="170" y1="170" x2="163" y2="163"/>
+          </g>
+        </svg>
+        <svg viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="80" fill="none"
+                  stroke="rgba(45, 85, 132, 0.35)" stroke-width="1"/>
+          <circle id="progressArc" cx="100" cy="100" r="80" fill="none"
+                  stroke="var(--halo-cyan)" stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-dasharray="502.7"
+                  stroke-dashoffset="502.7"
+                  transform="rotate(-90 100 100)"
+                  style="filter: drop-shadow(0 0 4px var(--halo-cyan));"/>
+        </svg>
+        <div class="timer-text">
+          <div class="timer-phase" id="phaseLabel">READY</div>
+          <div class="timer-digits" id="timer">00:00</div>
+          <div class="timer-sub" id="timerSub">press start to begin</div>
+        </div>
+      </div>
+
+      <div class="timer-meta-right">
+        <div>BATTERY</div>
+        <div class="v" id="batteryVal">—</div>
+        <div style="margin-top:6px;">CHANNELS</div>
+        <div class="v">4 · O1 O2 T3 T4</div>
+      </div>
     </div>
+
     <div class="viz-area">
       <div class="waveform-box">
+        <span class="corners"></span>
         <div class="ch-labels">
-          O1<br>O2<br>T3<br>T4
+          <div><span class="ch-dot ch-0"></span>O1</div>
+          <div><span class="ch-dot ch-1"></span>O2</div>
+          <div><span class="ch-dot ch-2"></span>T3</div>
+          <div><span class="ch-dot ch-3"></span>T4</div>
+        </div>
+        <div class="waveform-overlay">
+          <div><span class="live-dot"></span>LIVE · 250 Hz</div>
         </div>
         <canvas id="waveform"></canvas>
       </div>
-      <div class="bands" id="bandsBox"></div>
+      <div class="bands">
+        <span class="corners"></span>
+      </div>
     </div>
   </div>
 
-  <!-- RIGHT: event log -->
+  <!-- RIGHT: Telemetry -->
   <div class="panel right">
     <div class="section">
-      <h3>Event Log</h3>
+      <h3><span>Telemetry Feed</span><span class="meta">REAL-TIME</span></h3>
       <div class="event-log" id="eventLog"></div>
     </div>
-    <div class="section" style="margin-top:18px;">
-      <h3>Signal Quality</h3>
-      <div class="kv"><span class="k">Battery</span><span class="v" id="batteryVal">—</span></div>
-      <div class="kv"><span class="k">Source</span><span class="v" id="sourceVal">simulator</span></div>
-      <div class="kv"><span class="k">Samples/sec</span><span class="v" id="sampleRate">0</span></div>
+    <div class="section" style="margin-top: 20px;">
+      <h3><span>Operator</span><span class="meta">ON-DUTY</span></h3>
+      <div class="kv"><span class="k">Name</span><span class="v" id="operatorName">—</span></div>
+      <div class="kv"><span class="k">Started</span><span class="v" id="startedAt">—</span></div>
     </div>
   </div>
 
-  <!-- FOOTER: controls -->
+  <!-- FOOTER: Controls -->
   <div class="footer">
-    <div style="display:flex;gap:10px;">
-      <button class="btn" id="btnConnect">Connect Headband</button>
-      <button class="btn primary" id="btnStart" disabled>Start Session</button>
-      <button class="btn" id="btnNextPhase" disabled>Next Phase →</button>
+    <div class="footer-left">
+      <button class="btn" id="btnConnect">◂ Connect Headband</button>
+      <button class="btn primary" id="btnStart" disabled>▸ Start Session</button>
+      <button class="btn" id="btnNextPhase" disabled>Next Phase ▸</button>
     </div>
-    <button class="btn danger" id="btnStop" disabled>⏹ STOP SESSION</button>
+    <button class="btn danger-emergency" id="btnStop" disabled>⏹ ABORT SEQUENCE</button>
   </div>
 </div>
 
 <!-- Pre-report modal -->
 <div class="modal-backdrop" id="preModal">
   <div class="modal">
-    <h2>Pre-Session Check-In</h2>
-    <p style="color:var(--text-dim);font-size:12px;">Ask the client to rate each, 1 (lowest) to 10 (highest).</p>
-    <label>Stress level</label>
+    <span class="corners"></span>
+    <h2>Pre-Session · Baseline Readings</h2>
+    <p style="color:var(--halo-text-dim);font-size:12px;font-family:var(--mono);letter-spacing:0.3px;">
+      Ask subject to rate each metric, 1 (lowest) to 10 (highest).
+    </p>
+    <label>Stress Level</label>
     <div class="scale" id="preStressScale"></div>
-    <label>Focus level</label>
+    <label>Focus Level</label>
     <div class="scale" id="preFocusScale"></div>
     <label>Mood</label>
     <div class="scale" id="preMoodScale"></div>
     <div style="display:flex;gap:10px;margin-top:22px;justify-content:flex-end;">
-      <button class="btn primary" id="preSubmit">Begin Baseline</button>
+      <button class="btn primary" id="preSubmit">◂ Engage Baseline ▸</button>
     </div>
   </div>
 </div>
@@ -330,17 +496,18 @@
 <!-- Post-report modal -->
 <div class="modal-backdrop" id="postModal">
   <div class="modal">
-    <h2 id="postTitle">Post-Session Report</h2>
-    <label>Stress level</label>
+    <span class="corners"></span>
+    <h2 id="postTitle">Post-Session · Readings</h2>
+    <label>Stress Level</label>
     <div class="scale" id="postStressScale"></div>
-    <label>Focus level</label>
+    <label>Focus Level</label>
     <div class="scale" id="postFocusScale"></div>
     <label>Mood</label>
     <div class="scale" id="postMoodScale"></div>
-    <label>Coach notes (select all that apply)</label>
+    <label>Operator Notes · Select All That Apply</label>
     <div class="note-chips" id="noteChips"></div>
     <div style="display:flex;gap:10px;margin-top:22px;justify-content:flex-end;">
-      <button class="btn primary" id="postSubmit">Finalize Session</button>
+      <button class="btn primary" id="postSubmit">◂ Finalize Session</button>
     </div>
   </div>
 </div>
@@ -351,23 +518,30 @@
   const qs = new URLSearchParams(window.location.search);
   const eegKind = qs.get('source') || 'simulator';
 
-  // ---- State ----
+  // --- Readouts ----
+  const bootTime = Date.now();
+  setInterval(() => {
+    document.getElementById('hdrUTC').textContent =
+      new Date().toISOString().substr(11, 8) + ' UTC';
+  }, 1000);
+  document.getElementById('hdrSessionId').textContent = '#' + String(sessionId).padStart(5, '0');
+
+  // --- State ---
   let session = null;
   let eegSource = null;
   let sampleCount = 0;
-  let sampleRateDisplay = 0;
-  let phase = 'idle'; // idle | baseline | stimulus | cooldown | done
+  let phase = 'idle';
   let phaseStartMs = null;
   let phaseDurationMs = 0;
-  let ringBuffer = [[], [], [], []]; // per channel
-  const RING_MAX = 2000; // ~8 sec at 250 Hz
+  let ringBuffer = [[], [], [], []];
+  const RING_MAX = 2000;
   const BAND_KEYS = ['delta','theta','alpha','smr','beta','gamma'];
   let phaseBandAccum = BAND_KEYS.reduce((o,b) => ({...o, [b]: {sum:0,n:0}}), {});
   let preReport = {};
   let postReport = {};
   let selectedNoteIds = new Set();
 
-  // ---- Bootstrap ----
+  // --- Bootstrap ---
   async function boot() {
     try {
       const r = await fetch(`/api/sessions/${sessionId}`);
@@ -377,18 +551,26 @@
       renderClient();
       renderProtocol();
       renderBandsBox();
-      phaseDurationMs = (session.duration_minutes * 60 * 1000);  // full stimulus phase
+      phaseDurationMs = session.duration_minutes * 60 * 1000;
       setPhaseLabel('READY');
 
+      document.getElementById('operatorName').textContent =
+        session.coach_staff_name || 'unassigned';
+      document.getElementById('startedAt').textContent =
+        session.started_at ? new Date(session.started_at).toLocaleTimeString() : '—';
+      document.getElementById('sourceVal').textContent = session.eeg_source || eegKind;
+      document.getElementById('protocolMeta').textContent =
+        session.protocol_code || session.target_band.toUpperCase();
+
       if (session.status === 'active') {
-        // Session already started — recover? For now, warn.
         log('warn', 'Session was already active on load. Manual continuation.');
       } else if (session.status !== 'scheduled') {
-        log('err', `Session status is ${session.status} — read-only view.`);
+        log('err', `Session status: ${session.status} · read-only view`);
         document.getElementById('btnConnect').disabled = true;
         document.getElementById('btnStart').disabled = true;
       }
       updateSessionStatus();
+      log('ok', 'Console initialized · awaiting connect command');
     } catch (err) {
       log('err', err.message);
     }
@@ -399,54 +581,53 @@
     const medical = c.medical_clearance_status;
     const consent = !!c.consent_signed_at;
     let warn = '';
-    if (medical !== 'cleared') warn += `<div class="gate-warn">Medical clearance: <b>${medical}</b> — cannot start.</div>`;
-    if (!consent) warn += `<div class="gate-warn">Consent not on file — cannot start.</div>`;
+    if (medical !== 'cleared') warn += `<div class="gate-warn">MEDICAL CLEARANCE · ${medical.toUpperCase()} · CANNOT START</div>`;
+    if (!consent) warn += `<div class="gate-warn">CONSENT · NOT ON FILE · CANNOT START</div>`;
     document.getElementById('clientInfo').innerHTML = warn + `
+      <div class="dossier-avatar">${c.first_name.charAt(0)}${c.last_name_initial}</div>
       <div class="kv"><span class="k">Name</span><span class="v">${c.first_name} ${c.last_name_initial}.</span></div>
-      <div class="kv"><span class="k">Client ID</span><span class="v">${c.client_external_id.slice(0,8)}…</span></div>
-      <div class="kv"><span class="k">Clearance</span><span class="v">${medical}</span></div>
-      <div class="kv"><span class="k">Consent</span><span class="v">${consent ? 'signed' : 'missing'}</span></div>`;
+      <div class="kv"><span class="k">ID</span><span class="v">${c.client_external_id.substr(0,8)}</span></div>
+      <div class="kv"><span class="k">Clearance</span><span class="v" style="color:var(--halo-green);">${medical}</span></div>
+      <div class="kv"><span class="k">Consent</span><span class="v" style="color:var(--halo-green);">${consent ? 'signed' : 'missing'}</span></div>`;
   }
 
   function renderProtocol() {
     const c = session;
     document.getElementById('protocolInfo').innerHTML = `
       <div class="kv"><span class="k">Name</span><span class="v">${c.protocol_name}</span></div>
-      <div class="kv"><span class="k">Target band</span><span class="v">${c.target_band}</span></div>
-      <div class="kv"><span class="k">Target freq</span><span class="v">${c.target_frequency_hz} Hz</span></div>
+      <div class="kv"><span class="k">Band</span><span class="v" style="color:var(--halo-green);">${c.target_band} · ${c.target_frequency_hz} Hz</span></div>
       <div class="kv"><span class="k">Duration</span><span class="v">${c.duration_minutes} min</span></div>
       <div class="kv"><span class="k">Light</span><span class="v">${c.light_intensity_pct}%</span></div>
       <div class="kv"><span class="k">Audio</span><span class="v">${c.audio_type}</span></div>`;
-    document.getElementById('sourceVal').textContent = session.eeg_source || eegKind;
   }
 
   function renderBandsBox() {
     const html = BAND_KEYS.map(b => `
       <div class="band ${b === session.target_band ? 'target' : ''}" data-band="${b}">
         <div class="band-name">${b}</div>
+        <div class="band-bar-wrap"><div class="band-fill" id="bf-${b}" style="height:0%"></div></div>
         <div class="band-val" id="bv-${b}">—</div>
-        <div class="band-bar"><div class="band-fill" id="bf-${b}" style="width:0%"></div></div>
       </div>`).join('');
-    document.getElementById('bandsBox').innerHTML = html;
+    document.querySelector('.bands').innerHTML = '<span class="corners"></span>' + html;
   }
 
-  // ---- EEG connection ----
+  // --- EEG connection ---
   document.getElementById('btnConnect').addEventListener('click', async () => {
     try {
       eegSource = window.WellnessEEG.createSource(eegKind);
       eegSource.onStatus(s => {
         const el = document.getElementById('eegStatus');
-        el.textContent = `EEG: ${s}`;
-        el.className = 'pill ' + (s === 'connected' ? 'ok' : s === 'error' ? 'err' : s === 'disconnected' ? 'idle' : 'warn');
+        el.textContent = `EEG · ${s.toUpperCase()}`;
+        el.className = 'hd-pill ' + (s === 'connected' ? 'ok' : s === 'error' ? 'err' : s === 'disconnected' ? 'idle' : 'warn');
       });
       eegSource.onSample(onSample);
       await eegSource.connect();
-      log('ok', `Headband connected (${eegKind}).`);
+      log('ok', `Headband linked · source: ${eegKind}`);
       document.getElementById('btnStart').disabled = false;
       const info = eegSource.getDeviceInfo();
       if (info?.battery != null) document.getElementById('batteryVal').textContent = info.battery + '%';
     } catch (err) {
-      log('err', 'Connection failed: ' + err.message);
+      log('err', 'Link failed · ' + err.message);
     }
   });
 
@@ -458,9 +639,8 @@
     }
   }
 
-  // ---- Sample-rate display + band computation loop ----
+  // --- Band computation loop ---
   setInterval(() => {
-    sampleRateDisplay = sampleCount;
     document.getElementById('sampleRate').textContent = sampleCount;
     sampleCount = 0;
 
@@ -469,7 +649,6 @@
       const powers = window.WellnessEEG.computeBandPowers(f32, 250);
       if (powers) {
         updateBandsUI(powers);
-        // Accumulate for phase average
         for (const b of BAND_KEYS) {
           phaseBandAccum[b].sum += powers[b];
           phaseBandAccum[b].n += 1;
@@ -483,11 +662,11 @@
     for (const b of BAND_KEYS) {
       const pct = Math.min(100, (powers[b] / max) * 100);
       document.getElementById(`bv-${b}`).textContent = powers[b].toFixed(1);
-      document.getElementById(`bf-${b}`).style.width = pct + '%';
+      document.getElementById(`bf-${b}`).style.height = pct + '%';
     }
   }
 
-  // ---- Waveform rendering ----
+  // --- Waveform rendering ---
   const canvas = document.getElementById('waveform');
   const ctx = canvas.getContext('2d');
   function resizeCanvas() {
@@ -499,11 +678,20 @@
   window.addEventListener('resize', resizeCanvas);
   setTimeout(resizeCanvas, 50);
 
+  const CHANNEL_COLORS = ['#00d4ff', '#00ff88', '#aa66ff', '#ffaa00'];
+
   function renderWaveform() {
     const w = canvas.getBoundingClientRect().width;
     const h = canvas.getBoundingClientRect().height;
     ctx.clearRect(0, 0, w, h);
-    const colors = ['#22d3ee', '#34d399', '#a78bfa', '#f59e0b'];
+
+    // Faint gridline
+    ctx.strokeStyle = 'rgba(45, 85, 132, 0.2)';
+    ctx.lineWidth = 0.5;
+    for (let y = 0; y <= h; y += h / 8) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
     const rowH = h / 4;
     const visible = 800;
 
@@ -511,8 +699,10 @@
       const data = ringBuffer[ch].slice(-visible);
       if (!data.length) continue;
       const mid = rowH * ch + rowH / 2;
-      ctx.strokeStyle = colors[ch];
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = CHANNEL_COLORS[ch];
+      ctx.lineWidth = 1.25;
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = CHANNEL_COLORS[ch];
       ctx.beginPath();
       for (let i = 0; i < data.length; i++) {
         const x = (i / data.length) * w;
@@ -520,34 +710,32 @@
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
+      ctx.shadowBlur = 0;
     }
     requestAnimationFrame(renderWaveform);
   }
   requestAnimationFrame(renderWaveform);
 
-  // ---- Phase control ----
+  // --- Phase control ---
   document.getElementById('btnStart').addEventListener('click', () => {
     buildScale('preStressScale', v => preReport.stress = v);
-    buildScale('preFocusScale', v => preReport.focus = v);
-    buildScale('preMoodScale', v => preReport.mood = v);
+    buildScale('preFocusScale',  v => preReport.focus = v);
+    buildScale('preMoodScale',   v => preReport.mood = v);
     document.getElementById('preModal').classList.add('open');
   });
 
   document.getElementById('preSubmit').addEventListener('click', async () => {
     if (!preReport.stress || !preReport.focus || !preReport.mood) {
-      alert('Please fill all three ratings.');
+      alert('Fill all three metrics before proceeding.');
       return;
     }
     try {
       const r = await fetch(`/api/sessions/${sessionId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pre_stress: preReport.stress,
-          pre_focus: preReport.focus,
-          pre_mood: preReport.mood,
-        }),
+        body: JSON.stringify(preReport),
       });
+      if (r.status === 404) throw new Error('session not found');
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
 
@@ -556,14 +744,15 @@
         <div class="kv"><span class="k">Stress</span><span class="v">${preReport.stress}/10</span></div>
         <div class="kv"><span class="k">Focus</span><span class="v">${preReport.focus}/10</span></div>
         <div class="kv"><span class="k">Mood</span><span class="v">${preReport.mood}/10</span></div>`;
+      document.getElementById('startedAt').textContent = new Date().toLocaleTimeString();
 
-      startPhase('baseline', 3 * 60 * 1000); // 3-minute baseline
+      startPhase('baseline', 3 * 60 * 1000);
       document.getElementById('btnStart').disabled = true;
       document.getElementById('btnNextPhase').disabled = false;
       document.getElementById('btnStop').disabled = false;
-      log('ok', 'Session started. Baseline phase running.');
+      log('ok', 'SESSION ENGAGED · baseline phase active');
     } catch (err) {
-      log('err', 'Start failed: ' + err.message);
+      log('err', 'Start failed · ' + err.message);
     }
   });
 
@@ -575,18 +764,17 @@
     phaseDurationMs = durationMs;
     phaseBandAccum = BAND_KEYS.reduce((o,b) => ({...o, [b]: {sum:0,n:0}}), {});
     setPhaseLabel(name.toUpperCase());
-    document.getElementById('timerSub').textContent = `${name} phase in progress`;
+    document.getElementById('timerSub').textContent = `${name} active`;
 
-    // Tell simulator to shift entrainment during stimulus
     if (eegSource && eegSource.setStimulusMode) {
       eegSource.setStimulusMode(name === 'stimulus', session.target_frequency_hz);
     }
+    log('ok', `Phase engaged · ${name.toUpperCase()}`);
     updateSessionStatus();
   }
 
   async function advancePhase() {
     if (phase === 'idle' || phase === 'done') return;
-    // Submit band-power averages for the phase just completed
     const avg = {};
     for (const b of BAND_KEYS) {
       avg[b] = phaseBandAccum[b].n ? phaseBandAccum[b].sum / phaseBandAccum[b].n : null;
@@ -597,28 +785,30 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phase, band_powers: avg }),
       });
-      log('ok', `${phase} phase submitted.`);
+      log('ok', `${phase.toUpperCase()} averages transmitted`);
     } catch (err) {
-      log('warn', 'Phase submit failed: ' + err.message);
+      log('warn', 'Phase submit failed · ' + err.message);
     }
 
-    if (phase === 'baseline') {
-      startPhase('stimulus', session.duration_minutes * 60 * 1000);
-    } else if (phase === 'stimulus') {
-      startPhase('cooldown', 3 * 60 * 1000);
-    } else if (phase === 'cooldown') {
-      finalizeSession();
-    }
+    if (phase === 'baseline')   startPhase('stimulus', session.duration_minutes * 60 * 1000);
+    else if (phase === 'stimulus') startPhase('cooldown', 3 * 60 * 1000);
+    else if (phase === 'cooldown') finalizeSession();
   }
 
   function setPhaseLabel(label) {
     document.getElementById('phaseLabel').textContent = label;
   }
 
+  // Timer + progress arc
+  const ARC_LENGTH = 502.7; // 2πr for r=80
   setInterval(() => {
     if (phase === 'idle' || phase === 'done' || !phaseStartMs) return;
     const elapsed = Date.now() - phaseStartMs;
     const remaining = Math.max(0, phaseDurationMs - elapsed);
+    const pct = 1 - (remaining / phaseDurationMs);
+    document.getElementById('progressArc').setAttribute(
+      'stroke-dashoffset', String(ARC_LENGTH * (1 - pct))
+    );
     const min = Math.floor(remaining / 60000);
     const sec = Math.floor((remaining % 60000) / 1000);
     document.getElementById('timer').textContent =
@@ -628,19 +818,24 @@
 
   function updateSessionStatus() {
     const el = document.getElementById('sessionStatus');
-    const map = { idle: ['session: ready', 'idle'], baseline: ['session: baseline', 'warn'],
-                  stimulus: ['session: stimulus', 'ok'], cooldown: ['session: cooldown', 'warn'],
-                  done: ['session: done', 'idle'] };
-    const [txt, cls] = map[phase] || ['session: ?', 'idle'];
-    el.textContent = txt; el.className = 'pill ' + cls;
+    const map = {
+      idle:      ['SESSION · READY', 'idle'],
+      baseline:  ['SESSION · BASELINE', 'warn'],
+      stimulus:  ['SESSION · STIMULUS', 'ok'],
+      cooldown:  ['SESSION · COOLDOWN', 'warn'],
+      done:      ['SESSION · CLOSED', 'idle'],
+    };
+    const [txt, cls] = map[phase] || ['SESSION · ?', 'idle'];
+    el.textContent = txt; el.className = 'hd-pill ' + cls;
   }
 
-  // ---- Stop ----
+  // --- Stop / Finalize ---
   document.getElementById('btnStop').addEventListener('click', () => {
-    if (!confirm('Stop session now? Client will be asked for post-session report.')) return;
+    if (!confirm('Abort session? Subject will be asked for post-session report.')) return;
     if (eegSource && eegSource.setStimulusMode) eegSource.setStimulusMode(false);
     phase = 'done';
     updateSessionStatus();
+    log('warn', 'ABORT COMMAND · session halted by operator');
     showPostModal(true);
   });
 
@@ -648,21 +843,24 @@
     phase = 'done';
     updateSessionStatus();
     setPhaseLabel('COMPLETE');
-    document.getElementById('timerSub').textContent = 'collect post-session report';
+    document.getElementById('timerSub').textContent = 'collect post report';
     if (eegSource && eegSource.setStimulusMode) eegSource.setStimulusMode(false);
+    log('ok', 'Full cycle complete · collecting post-session readings');
     showPostModal(false);
   }
 
   async function showPostModal(earlyStop) {
-    document.getElementById('postTitle').textContent = earlyStop ? 'Early Stop — Report' : 'Post-Session Report';
+    document.getElementById('postTitle').textContent =
+      earlyStop ? 'Early Abort · Report' : 'Post-Session · Report';
     buildScale('postStressScale', v => postReport.stress = v);
-    buildScale('postFocusScale', v => postReport.focus = v);
-    buildScale('postMoodScale', v => postReport.mood = v);
+    buildScale('postFocusScale',  v => postReport.focus = v);
+    buildScale('postMoodScale',   v => postReport.mood = v);
 
-    // Load vocab
     const r = await fetch('/api/vocab');
     const { vocab } = await r.json();
-    const chips = vocab.map(v => `<div class="chip" data-id="${v.id}" title="${v.category}">${v.display_text}</div>`).join('');
+    const chips = vocab.map(v =>
+      `<div class="chip" data-id="${v.id}" title="${v.category}">${v.display_text}</div>`
+    ).join('');
     document.getElementById('noteChips').innerHTML = chips;
     document.querySelectorAll('#noteChips .chip').forEach(ch => {
       ch.addEventListener('click', () => {
@@ -677,9 +875,7 @@
   }
 
   async function submitPost(earlyStop) {
-    const url = earlyStop
-      ? `/api/sessions/${sessionId}/stop`
-      : `/api/sessions/${sessionId}/complete`;
+    const url = earlyStop ? `/api/sessions/${sessionId}/stop` : `/api/sessions/${sessionId}/complete`;
     try {
       const r = await fetch(url, {
         method: 'POST',
@@ -687,23 +883,23 @@
         body: JSON.stringify({
           stop_reason_code: earlyStop ? 'client_stopped' : undefined,
           post_stress: postReport.stress,
-          post_focus: postReport.focus,
-          post_mood: postReport.mood,
+          post_focus:  postReport.focus,
+          post_mood:   postReport.mood,
           note_vocab_ids: Array.from(selectedNoteIds),
         }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       document.getElementById('postModal').classList.remove('open');
-      log('ok', 'Session finalized.');
+      log('ok', 'Session finalized · returning to console');
       if (eegSource) await eegSource.disconnect();
       setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
     } catch (err) {
-      log('err', 'Finalize failed: ' + err.message);
+      log('err', 'Finalize failed · ' + err.message);
     }
   }
 
-  // ---- Helpers ----
+  // --- Helpers ---
   function buildScale(containerId, onPick) {
     const el = document.getElementById(containerId);
     el.innerHTML = '';
@@ -721,11 +917,11 @@
 
   function log(level, msg) {
     const el = document.getElementById('eventLog');
-    const t = new Date().toLocaleTimeString();
-    const colors = { ok: '#34d399', warn: '#f59e0b', err: '#ef4444' };
-    const dot = `<span style="color:${colors[level] || '#6a7a92'}">●</span>`;
+    const t = new Date().toTimeString().substr(0, 8);
     el.insertAdjacentHTML('afterbegin',
-      `<div class="evt">${dot} <span class="t">${t}</span> <span class="m">${msg}</span></div>`);
+      `<div class="evt"><span class="t">${t}</span> <span class="lv-${level}">▸</span> <span class="m">${msg}</span></div>`);
+    // Cap the log size for perf
+    while (el.children.length > 200) el.removeChild(el.lastChild);
   }
 
   boot();
