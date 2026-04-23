@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Client Detail</title>
+<style>
+  :root {
+    --bg:#0a0f1a;--panel:#0f1624;--panel-2:#121c2e;--border:#1d2a42;
+    --text:#d8e3f3;--text-dim:#6a7a92;
+    --cyan:#22d3ee;--green:#34d399;--amber:#f59e0b;--red:#ef4444;--purple:#a78bfa;
+    --mono:'SFMono-Regular','Consolas','Menlo',monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }
+  .topbar { background:var(--panel); border-bottom:1px solid var(--border);
+            padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+  .brand { font-family:var(--mono); font-size:11px; letter-spacing:2px;
+           color:var(--cyan); text-transform:uppercase; }
+  .wrap { max-width:1100px; margin:0 auto; padding:24px; }
+  .row { display:grid; grid-template-columns:1fr 2fr; gap:16px; }
+  .card { background:var(--panel); border:1px solid var(--border); padding:22px; }
+  .card h2 { font-family:var(--mono); font-size:11px; letter-spacing:2px;
+             color:var(--cyan); text-transform:uppercase; margin:0 0 18px;
+             padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .kv { display:flex; justify-content:space-between; padding:6px 0;
+        border-bottom:1px dashed var(--border); font-size:13px; }
+  .kv .k { color:var(--text-dim); font-family:var(--mono); font-size:11px; letter-spacing:1px; }
+  .kv .v { color:var(--text); }
+  .pill { font-family:var(--mono); font-size:10px; padding:2px 8px;
+          border-radius:12px; letter-spacing:1px; }
+  .pill.ok { background:rgba(52,211,153,0.15); color:var(--green); }
+  .pill.warn { background:rgba(245,158,11,0.15); color:var(--amber); }
+  .pill.err { background:rgba(239,68,68,0.15); color:var(--red); }
+  .pill.idle { background:rgba(106,122,146,0.15); color:var(--text-dim); }
+  .btn { padding:8px 14px; background:var(--panel-2); border:1px solid var(--border);
+         color:var(--text); font-family:var(--mono); font-size:11px;
+         letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; border-radius:2px;
+         text-decoration:none; display:inline-block; }
+  .btn.primary { background:var(--cyan); color:#000; border-color:var(--cyan); font-weight:600; }
+  .btn:hover { border-color:var(--cyan); }
+  .btn.small { padding:5px 10px; font-size:10px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:8px 4px; text-align:left; border-bottom:1px solid var(--border); font-size:12px; }
+  th { font-family:var(--mono); font-size:10px; letter-spacing:1.5px; color:var(--text-dim);
+       text-transform:uppercase; font-weight:normal; }
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.75);
+                    display:none; align-items:center; justify-content:center; z-index:100; }
+  .modal-backdrop.open { display:flex; }
+  .modal { background:var(--panel); border:1px solid var(--border);
+           width:100%; max-width:560px; padding:28px; }
+  .modal h2 { font-family:var(--mono); font-size:12px; letter-spacing:2px;
+              color:var(--cyan); text-transform:uppercase; margin:0 0 20px; }
+  label { display:block; font-family:var(--mono); font-size:10px; letter-spacing:1.5px;
+          color:var(--text-dim); text-transform:uppercase; margin:14px 0 6px; }
+  select, input { width:100%; padding:10px 12px;
+                  background:var(--panel-2); border:1px solid var(--border);
+                  color:var(--text); font-size:14px; border-radius:2px; }
+  a { color:var(--cyan); text-decoration:none; }
+  .share-link { font-family:var(--mono); font-size:11px;
+                background:#05080f; padding:10px; border:1px solid var(--border);
+                word-break:break-all; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">CLIENT DETAIL</div>
+  <a href="/dashboard" class="btn">← Dashboard</a>
+</div>
+
+<div class="wrap">
+  <div class="row">
+    <div>
+      <div class="card" id="clientCard">loading…</div>
+      <div class="card" style="margin-top:16px;">
+        <h2>Client Portal Link</h2>
+        <p style="font-size:12px;color:var(--text-dim);margin:0 0 8px;">
+          Share this URL with the client to view their progress on their phone.
+        </p>
+        <div class="share-link" id="shareLink">—</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Sessions <span id="sessionCount" style="color:var(--text-dim);">(0)</span></h2>
+        <div style="margin-bottom:14px;">
+          <button class="btn primary" id="btnSchedule">+ Schedule Session</button>
+        </div>
+        <table id="sessionsTable">
+          <thead><tr><th>Date</th><th>Protocol</th><th>Status</th><th>Δ Stress</th><th>Δ Focus</th><th>Target Gain</th><th></th></tr></thead>
+          <tbody id="sessionsBody"><tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:20px;">No sessions yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule modal -->
+<div class="modal-backdrop" id="scheduleModal">
+  <div class="modal">
+    <h2>Schedule Session</h2>
+    <label>Protocol</label>
+    <select id="protocolSelect"></select>
+    <label>Scheduled Time (optional — leave blank to start immediately)</label>
+    <input type="datetime-local" id="scheduledAt">
+    <label>Coach Name</label>
+    <input type="text" id="coachName" placeholder="Staff running the session">
+    <label>EEG Source</label>
+    <select id="eegSourceSelect">
+      <option value="simulator">Simulator (no hardware needed)</option>
+      <option value="bluetooth">BrainBit via Bluetooth</option>
+    </select>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn" id="btnScheduleCancel">Cancel</button>
+      <button class="btn primary" id="btnScheduleConfirm">Schedule</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const clientId = parseInt(window.location.pathname.match(/\/client\/(\d+)/)[1], 10);
+const qs = new URLSearchParams(window.location.search);
+
+async function load() {
+  try {
+    const [clientResp, protoResp] = await Promise.all([
+      fetch(`/api/clients/${clientId}`).then(r=>r.json()),
+      fetch('/api/protocols').then(r=>r.json()),
+    ]);
+    renderClient(clientResp);
+    renderSessions(clientResp);
+    populateProtocols(protoResp.protocols);
+    if (qs.get('schedule') === '1') {
+      document.getElementById('scheduleModal').classList.add('open');
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function renderClient(data) {
+  const c = data.client;
+  const statusCls = c.medical_clearance_status === 'cleared' ? 'ok'
+    : c.medical_clearance_status === 'disqualified' ? 'err' : 'warn';
+  const consentCls = c.consent_signed_at ? 'ok' : 'idle';
+  document.getElementById('clientCard').innerHTML = `
+    <h2>${c.first_name} ${c.last_name_initial}.</h2>
+    <div class="kv"><span class="k">ID</span><span class="v" style="font-family:var(--mono);font-size:11px;">${c.external_id}</span></div>
+    <div class="kv"><span class="k">Clearance</span><span class="v"><span class="pill ${statusCls}">${c.medical_clearance_status}</span></span></div>
+    <div class="kv"><span class="k">Consent</span><span class="v"><span class="pill ${consentCls}">${c.consent_signed_at ? 'signed ' + c.consent_version : 'missing'}</span></span></div>
+    <div class="kv"><span class="k">Email</span><span class="v">${c.email || '—'}</span></div>
+    <div class="kv"><span class="k">Phone</span><span class="v">${c.phone || '—'}</span></div>
+    <div class="kv"><span class="k">Created</span><span class="v">${new Date(c.created_at).toLocaleDateString()}</span></div>
+  `;
+  const url = `${window.location.origin}/w/${c.external_id}`;
+  document.getElementById('shareLink').textContent = url;
+}
+
+function renderSessions(data) {
+  const sessions = data.sessions || [];
+  document.getElementById('sessionCount').textContent = `(${sessions.length})`;
+  if (!sessions.length) return;
+
+  const rows = sessions.map(s => {
+    const cls = s.status === 'completed' ? 'ok'
+              : s.status === 'stopped_early' ? 'warn'
+              : s.status === 'cancelled' ? 'err' : 'idle';
+    const dStress = (s.pre_stress != null && s.post_stress != null)
+      ? (s.post_stress - s.pre_stress) : null;
+    const dFocus = (s.pre_focus != null && s.post_focus != null)
+      ? (s.post_focus - s.pre_focus) : null;
+    const fmtD = (v, good) => {
+      if (v == null) return '—';
+      const sign = v > 0 ? '+' : '';
+      const color = (good ? v > 0 : v < 0) ? 'var(--green)' : v === 0 ? 'var(--text-dim)' : 'var(--amber)';
+      return `<span style="color:${color};">${sign}${v}</span>`;
+    };
+    const tb = s.target_band;
+    const baseVal = s[`baseline_${tb}`], stimVal = s[`stimulus_${tb}`];
+    const gain = (baseVal && stimVal && baseVal > 0)
+      ? `${(((stimVal - baseVal) / baseVal) * 100).toFixed(0)}%` : '—';
+    const when = s.started_at ? new Date(s.started_at).toLocaleString()
+               : s.scheduled_at ? new Date(s.scheduled_at).toLocaleString() + ' (sched)'
+               : '—';
+    return `<tr>
+      <td>${when}</td>
+      <td>${s.protocol_name}</td>
+      <td><span class="pill ${cls}">${s.status}</span></td>
+      <td>${fmtD(dStress, false)}</td>
+      <td>${fmtD(dFocus, true)}</td>
+      <td style="font-family:var(--mono);color:var(--green);">${gain}</td>
+      <td><a class="btn small" href="/session/${s.id}/run">Open</a></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('sessionsBody').innerHTML = rows;
+}
+
+function populateProtocols(protocols) {
+  const el = document.getElementById('protocolSelect');
+  el.innerHTML = protocols.map(p =>
+    `<option value="${p.id}">${p.name} — ${p.target_band} ${p.target_frequency_hz}Hz · ${p.duration_minutes}min</option>`
+  ).join('');
+}
+
+document.getElementById('btnSchedule').addEventListener('click', () => {
+  document.getElementById('scheduleModal').classList.add('open');
+});
+document.getElementById('btnScheduleCancel').addEventListener('click', () => {
+  document.getElementById('scheduleModal').classList.remove('open');
+});
+
+document.getElementById('btnScheduleConfirm').addEventListener('click', async () => {
+  try {
+    const payload = {
+      client_id: clientId,
+      protocol_id: parseInt(document.getElementById('protocolSelect').value, 10),
+      scheduled_at: document.getElementById('scheduledAt').value || null,
+      coach_staff_name: document.getElementById('coachName').value.trim() || null,
+      eeg_source: document.getElementById('eegSourceSelect').value,
+    };
+    const r = await fetch('/api/sessions', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    window.location.href = `/session/${data.session.id}/run`;
+  } catch (err) {
+    alert('Schedule failed: ' + err.message);
+  }
+});
+
+load();
+</script>
+</body>
+</html>

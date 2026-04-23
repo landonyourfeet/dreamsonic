@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Progress — Performance Lab</title>
+<style>
+  :root {
+    --bg:#0a0f1a;--panel:#0f1624;--panel-2:#121c2e;--border:#1d2a42;
+    --text:#d8e3f3;--text-dim:#6a7a92;
+    --cyan:#22d3ee;--green:#34d399;--amber:#f59e0b;--red:#ef4444;--purple:#a78bfa;
+    --mono:'SFMono-Regular','Consolas','Menlo',monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:15px; }
+  .topbar { background:var(--panel); border-bottom:1px solid var(--border);
+            padding:16px 18px; text-align:center; }
+  .brand { font-family:var(--mono); font-size:10px; letter-spacing:2px;
+           color:var(--cyan); text-transform:uppercase; }
+  .wrap { max-width:560px; margin:0 auto; padding:20px 16px 40px; }
+  .greeting { text-align:center; margin-bottom:22px; }
+  .greeting h1 { font-size:24px; font-weight:400; margin:0 0 4px; }
+  .greeting .sub { color:var(--text-dim); font-size:13px; font-family:var(--mono); letter-spacing:1px; }
+  .summary { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:22px; }
+  .metric { background:var(--panel); border:1px solid var(--border); padding:18px 16px; border-radius:4px; }
+  .metric .label { font-family:var(--mono); font-size:9px; letter-spacing:1.5px;
+                   color:var(--text-dim); text-transform:uppercase; margin-bottom:8px; }
+  .metric .val { font-family:var(--mono); font-size:26px; font-weight:300; color:var(--text); }
+  .metric .val.pos { color:var(--green); }
+  .metric .val.neg { color:var(--amber); }
+  .metric .sub { font-size:11px; color:var(--text-dim); margin-top:4px; }
+  .section-title { font-family:var(--mono); font-size:10px; letter-spacing:2px;
+                   color:var(--text-dim); text-transform:uppercase; margin:24px 0 10px; padding-left:4px; }
+  .session-card { background:var(--panel); border:1px solid var(--border);
+                  padding:14px 16px; margin-bottom:8px; border-radius:4px; }
+  .session-card .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .session-card .date { font-family:var(--mono); font-size:11px; color:var(--cyan); letter-spacing:1px; }
+  .session-card .protocol { font-size:14px; margin-top:2px; }
+  .session-card .pill { font-family:var(--mono); font-size:9px; padding:2px 8px;
+                        border-radius:10px; letter-spacing:1px; }
+  .pill.ok { background:rgba(52,211,153,0.15); color:var(--green); }
+  .pill.warn { background:rgba(245,158,11,0.15); color:var(--amber); }
+  .deltas { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+  .delta { text-align:center; font-family:var(--mono); }
+  .delta .dlabel { font-size:9px; color:var(--text-dim); letter-spacing:1px; text-transform:uppercase; }
+  .delta .dval { font-size:16px; margin-top:2px; }
+  .delta .dval.pos { color:var(--green); }
+  .delta .dval.neg { color:var(--amber); }
+  .delta .dval.zero { color:var(--text-dim); }
+  .empty { text-align:center; color:var(--text-dim); padding:40px 20px; font-size:13px; }
+  .disclaimer { font-size:11px; color:var(--text-dim); line-height:1.6;
+                margin-top:30px; padding:16px; background:var(--panel);
+                border:1px solid var(--border); border-radius:4px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">DREAMSONIC</div>
+</div>
+
+<div class="wrap" id="content">
+  <div class="empty">loading…</div>
+</div>
+
+<script>
+const externalId = window.location.pathname.split('/w/')[1];
+
+async function load() {
+  try {
+    const r = await fetch(`/api/progress/${externalId}`);
+    if (!r.ok) {
+      document.getElementById('content').innerHTML = '<div class="empty">Progress link not found.</div>';
+      return;
+    }
+    const data = await r.json();
+    render(data);
+  } catch (err) {
+    document.getElementById('content').innerHTML = `<div class="empty">Failed to load: ${err.message}</div>`;
+  }
+}
+
+function fmtDelta(v, goodDirection) {
+  // goodDirection: 'down' for stress (lower = better), 'up' for focus/mood
+  if (v == null) return { text:'—', cls:'zero' };
+  const rounded = Math.round(v * 10) / 10;
+  if (rounded === 0) return { text:'0', cls:'zero' };
+  const good = goodDirection === 'down' ? v < 0 : v > 0;
+  return { text: (v > 0 ? '+' : '') + rounded, cls: good ? 'pos' : 'neg' };
+}
+
+function render(data) {
+  const n = data.summary.total_sessions;
+  if (!n) {
+    document.getElementById('content').innerHTML = `
+      <div class="greeting">
+        <h1>Welcome, ${data.client.first_name}</h1>
+        <div class="sub">member since ${new Date(data.client.member_since).toLocaleDateString()}</div>
+      </div>
+      <div class="empty">No sessions completed yet.<br>Your progress will appear here after your first session.</div>
+      ${disclaimerHTML()}
+    `;
+    return;
+  }
+
+  const dStress = fmtDelta(data.summary.avg_stress_change, 'down');
+  const dFocus = fmtDelta(data.summary.avg_focus_change, 'up');
+  const dMood = fmtDelta(data.summary.avg_mood_change, 'up');
+  const gain = data.summary.avg_target_band_gain_pct;
+  const gainText = gain != null ? (gain > 0 ? '+' : '') + Math.round(gain) + '%' : '—';
+
+  const sessionHTML = data.sessions.slice().reverse().map(s => {
+    const cls = s.status === 'completed' ? 'ok' : 'warn';
+    const dS = fmtDelta(s.post_stress != null && s.pre_stress != null ? s.post_stress - s.pre_stress : null, 'down');
+    const dF = fmtDelta(s.post_focus != null && s.pre_focus != null ? s.post_focus - s.pre_focus : null, 'up');
+    const dM = fmtDelta(s.post_mood != null && s.pre_mood != null ? s.post_mood - s.pre_mood : null, 'up');
+    const g = s.target_band_gain_pct != null
+      ? { text: (s.target_band_gain_pct > 0 ? '+' : '') + Math.round(s.target_band_gain_pct) + '%',
+          cls: s.target_band_gain_pct > 0 ? 'pos' : 'neg' }
+      : { text:'—', cls:'zero' };
+    return `<div class="session-card">
+      <div class="head">
+        <div>
+          <div class="date">${new Date(s.date).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}</div>
+          <div class="protocol">${s.protocol_name}</div>
+        </div>
+        <span class="pill ${cls}">${s.status.replace('_',' ')}</span>
+      </div>
+      <div class="deltas">
+        <div class="delta"><div class="dlabel">Stress</div><div class="dval ${dS.cls}">${dS.text}</div></div>
+        <div class="delta"><div class="dlabel">Focus</div><div class="dval ${dF.cls}">${dF.text}</div></div>
+        <div class="delta"><div class="dlabel">Mood</div><div class="dval ${dM.cls}">${dM.text}</div></div>
+        <div class="delta"><div class="dlabel">${s.target_band}</div><div class="dval ${g.cls}">${g.text}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('content').innerHTML = `
+    <div class="greeting">
+      <h1>Hi, ${data.client.first_name}</h1>
+      <div class="sub">${n} session${n === 1 ? '' : 's'} · since ${new Date(data.client.member_since).toLocaleDateString()}</div>
+    </div>
+
+    <div class="summary">
+      <div class="metric">
+        <div class="label">Avg Stress Change</div>
+        <div class="val ${dStress.cls}">${dStress.text}</div>
+        <div class="sub">per session</div>
+      </div>
+      <div class="metric">
+        <div class="label">Avg Focus Change</div>
+        <div class="val ${dFocus.cls}">${dFocus.text}</div>
+        <div class="sub">per session</div>
+      </div>
+      <div class="metric">
+        <div class="label">Avg Mood Change</div>
+        <div class="val ${dMood.cls}">${dMood.text}</div>
+        <div class="sub">per session</div>
+      </div>
+      <div class="metric">
+        <div class="label">Avg Target Band Gain</div>
+        <div class="val ${gain != null && gain > 0 ? 'pos' : gain != null && gain < 0 ? 'neg' : ''}">${gainText}</div>
+        <div class="sub">during stimulus</div>
+      </div>
+    </div>
+
+    <div class="section-title">Session History</div>
+    ${sessionHTML}
+
+    ${disclaimerHTML()}
+  `;
+}
+
+function disclaimerHTML() {
+  return `<div class="disclaimer">
+    <strong>Reminder:</strong> These sessions are wellness and performance training, not medical treatment.
+    Reported numbers reflect self-rated check-ins and device readings only, and should not be interpreted
+    as clinical measurements. If you have health concerns, please consult a licensed healthcare provider.
+  </div>`;
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New Client Intake — Performance Lab</title>
+<style>
+  :root {
+    --bg:#0a0f1a;--panel:#0f1624;--panel-2:#121c2e;--border:#1d2a42;
+    --text:#d8e3f3;--text-dim:#6a7a92;
+    --cyan:#22d3ee;--green:#34d399;--amber:#f59e0b;--red:#ef4444;--purple:#a78bfa;
+    --mono:'SFMono-Regular','Consolas','Menlo',monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }
+  .topbar { background:var(--panel); border-bottom:1px solid var(--border);
+            padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
+  .brand { font-family:var(--mono); font-size:11px; letter-spacing:2px;
+           color:var(--cyan); text-transform:uppercase; }
+  .wrap { max-width:720px; margin:0 auto; padding:32px 24px; }
+  .step { background:var(--panel); border:1px solid var(--border); padding:28px; margin-bottom:16px; }
+  .step.done { opacity:0.5; }
+  .step h2 { font-family:var(--mono); font-size:11px; letter-spacing:2px;
+             color:var(--cyan); text-transform:uppercase; margin:0 0 4px; }
+  .step h2 .num { color:var(--text-dim); margin-right:10px; }
+  .step p.hint { color:var(--text-dim); font-size:12px; margin:0 0 20px; }
+  label { display:block; font-family:var(--mono); font-size:10px; letter-spacing:1.5px;
+          color:var(--text-dim); text-transform:uppercase; margin:14px 0 6px; }
+  input[type=text], input[type=email], input[type=tel], input[type=number], select, textarea {
+    width:100%; padding:10px 12px;
+    background:var(--panel-2); border:1px solid var(--border);
+    color:var(--text); font-size:14px; font-family:inherit;
+    border-radius:2px;
+  }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--cyan); }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+  .yesno { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .yesno button {
+    padding:10px; background:var(--panel-2); border:1px solid var(--border);
+    color:var(--text); font-family:var(--mono); font-size:12px; letter-spacing:1px;
+    cursor:pointer; border-radius:2px;
+  }
+  .yesno button.yes-on { background:rgba(245,158,11,0.15); border-color:var(--amber); color:var(--amber); }
+  .yesno button.no-on { background:rgba(52,211,153,0.15); border-color:var(--green); color:var(--green); }
+  .q { margin-bottom:14px; }
+  .q .qlabel { font-size:13px; margin-bottom:6px; }
+  .btn {
+    padding:12px 22px; background:var(--panel-2); border:1px solid var(--border);
+    color:var(--text); font-family:var(--mono); font-size:11px;
+    letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; border-radius:2px;
+  }
+  .btn.primary { background:var(--cyan); color:#000; border-color:var(--cyan); font-weight:600; }
+  .btn:disabled { opacity:0.3; cursor:not-allowed; }
+  .alert { padding:12px 14px; margin:14px 0; font-size:13px; border-radius:2px; }
+  .alert.err { background:rgba(239,68,68,0.1); border:1px solid var(--red); color:#fca5a5; }
+  .alert.ok { background:rgba(52,211,153,0.1); border:1px solid var(--green); color:#86efac; }
+  .consent-box {
+    background:#05080f; border:1px solid var(--border);
+    padding:18px; max-height:300px; overflow-y:auto;
+    font-size:12px; line-height:1.7; white-space:pre-wrap;
+    font-family:var(--mono);
+  }
+  a { color:var(--cyan); }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">NEW CLIENT INTAKE</div>
+  <a href="/dashboard" class="btn">← Dashboard</a>
+</div>
+
+<div class="wrap">
+
+  <!-- Step 1: Basic info -->
+  <div class="step" id="step1">
+    <h2><span class="num">01</span> Client Information</h2>
+    <p class="hint">Minimum PII. Last-name initial only. DOB stored as month/year for age eligibility.</p>
+    <div class="row2">
+      <div><label>First Name</label><input type="text" id="firstName" required></div>
+      <div><label>Last Initial</label><input type="text" id="lastInitial" maxlength="1" required></div>
+    </div>
+    <div class="row2">
+      <div><label>Birth Month</label>
+        <select id="dobMonth">
+          <option value="">—</option>
+          <option>1</option><option>2</option><option>3</option><option>4</option>
+          <option>5</option><option>6</option><option>7</option><option>8</option>
+          <option>9</option><option>10</option><option>11</option><option>12</option>
+        </select>
+      </div>
+      <div><label>Birth Year</label><input type="number" id="dobYear" min="1920" max="2020"></div>
+    </div>
+    <div class="row2">
+      <div><label>Email</label><input type="email" id="email"></div>
+      <div><label>Phone</label><input type="tel" id="phone"></div>
+    </div>
+    <div style="margin-top:20px;display:flex;justify-content:flex-end;">
+      <button class="btn primary" id="btnSaveClient">Save & Continue →</button>
+    </div>
+    <div id="step1Err"></div>
+  </div>
+
+  <!-- Step 2: Medical screening -->
+  <div class="step" id="step2" style="display:none;">
+    <h2><span class="num">02</span> Medical Screening</h2>
+    <p class="hint">Ask each question to the client. Any YES on safety-critical items disqualifies — the client will be referred to a licensed healthcare provider.</p>
+
+    <div id="screeningQs"></div>
+
+    <div style="margin-top:20px;display:flex;justify-content:flex-end;">
+      <button class="btn primary" id="btnSubmitScreening">Submit Screening →</button>
+    </div>
+    <div id="step2Err"></div>
+  </div>
+
+  <!-- Step 3: Consent -->
+  <div class="step" id="step3" style="display:none;">
+    <h2><span class="num">03</span> Informed Consent</h2>
+    <p class="hint">Client reads (or coach reads aloud) the full consent document, then types full name as signature.</p>
+
+    <div class="consent-box" id="consentText">loading…</div>
+
+    <label style="margin-top:18px;">Client Full Legal Name (typed signature)</label>
+    <input type="text" id="sigName" placeholder="Type full legal name here">
+
+    <label>Coach / Witness Name</label>
+    <input type="text" id="witness" placeholder="Staff member witnessing">
+
+    <div style="margin-top:20px;display:flex;justify-content:flex-end;">
+      <button class="btn primary" id="btnSubmitConsent">Sign & Complete →</button>
+    </div>
+    <div id="step3Err"></div>
+  </div>
+
+  <!-- Step 4: Done -->
+  <div class="step" id="step4" style="display:none;">
+    <h2><span class="num">04</span> Complete</h2>
+    <div class="alert ok" id="doneMsg">Client intake complete.</div>
+    <div style="display:flex;gap:10px;">
+      <a class="btn primary" id="scheduleLink" href="#">Schedule First Session →</a>
+      <a class="btn" href="/dashboard">Dashboard</a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let clientId = null;
+const SCREENING_QS = [
+  { key:'photosensitive_history', text:'History of photosensitive epilepsy or seizures triggered by flashing lights?', critical:true },
+  { key:'seizure_history', text:'History of seizures of any kind in the past 2 years?', critical:true },
+  { key:'concussion_history_2yr', text:'Concussion or head injury in the past 2 years?', critical:false },
+  { key:'psychoactive_meds', text:'Currently taking psychoactive medication (antidepressants, anticonvulsants, stimulants, etc.)?', critical:false },
+  { key:'pregnant', text:'Currently pregnant?', critical:false },
+  { key:'cardiac_condition', text:'Known cardiac condition?', critical:false },
+  { key:'under_18', text:'Client is under 18 years old?', critical:true },
+  { key:'acute_intoxication', text:'Currently under the influence of alcohol or substances?', critical:true },
+  { key:'client_stated_no_concerns', text:'Client confirms no other medical concerns that would prevent relaxation or sensory stimulation?', yesIsGood:true },
+];
+
+const screenAnswers = {};
+
+function renderScreening() {
+  const el = document.getElementById('screeningQs');
+  el.innerHTML = SCREENING_QS.map(q => `
+    <div class="q" data-key="${q.key}">
+      <div class="qlabel">${q.text}${q.critical ? ' <span style="color:var(--red);font-family:var(--mono);font-size:10px;">[SAFETY-CRITICAL]</span>' : ''}</div>
+      <div class="yesno">
+        <button data-val="yes">Yes</button>
+        <button data-val="no">No</button>
+      </div>
+    </div>`).join('');
+
+  el.querySelectorAll('.q').forEach(qEl => {
+    const key = qEl.dataset.key;
+    const qDef = SCREENING_QS.find(q => q.key === key);
+    qEl.querySelectorAll('.yesno button').forEach(b => {
+      b.addEventListener('click', () => {
+        const v = b.dataset.val === 'yes';
+        screenAnswers[key] = v;
+        qEl.querySelectorAll('.yesno button').forEach(x => x.classList.remove('yes-on','no-on'));
+        // "yes is bad" (critical disqualifier) → show amber on yes, green on no
+        // "yes is good" (client_stated_no_concerns) → show green on yes, amber on no
+        if (qDef.yesIsGood) {
+          b.classList.add(v ? 'no-on' : 'yes-on'); // green for yes, amber for no
+        } else {
+          b.classList.add(v ? 'yes-on' : 'no-on');
+        }
+      });
+    });
+  });
+}
+renderScreening();
+
+document.getElementById('btnSaveClient').addEventListener('click', async () => {
+  const payload = {
+    first_name: document.getElementById('firstName').value.trim(),
+    last_name_initial: document.getElementById('lastInitial').value.trim().toUpperCase(),
+    dob_month: parseInt(document.getElementById('dobMonth').value, 10) || null,
+    dob_year: parseInt(document.getElementById('dobYear').value, 10) || null,
+    email: document.getElementById('email').value.trim() || null,
+    phone: document.getElementById('phone').value.trim() || null,
+  };
+  if (!payload.first_name || !payload.last_name_initial) {
+    document.getElementById('step1Err').innerHTML = '<div class="alert err">First name and last initial required.</div>';
+    return;
+  }
+  try {
+    const r = await fetch('/api/clients', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    clientId = data.client.id;
+    document.getElementById('step1').classList.add('done');
+    document.getElementById('step2').style.display = 'block';
+    document.getElementById('step2').scrollIntoView({behavior:'smooth'});
+  } catch (err) {
+    document.getElementById('step1Err').innerHTML = `<div class="alert err">${err.message}</div>`;
+  }
+});
+
+document.getElementById('btnSubmitScreening').addEventListener('click', async () => {
+  // Verify all answered
+  for (const q of SCREENING_QS) {
+    if (!(q.key in screenAnswers)) {
+      document.getElementById('step2Err').innerHTML = '<div class="alert err">Please answer every question.</div>';
+      return;
+    }
+  }
+  try {
+    const r = await fetch(`/api/clients/${clientId}/screening`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(screenAnswers),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    if (data.disqualified) {
+      document.getElementById('step2Err').innerHTML = `
+        <div class="alert err">
+          <b>Client disqualified</b> due to: ${data.disqualified_reasons.join(', ')}.<br>
+          Do not proceed with wellness services. Provide the external resource directory instead.
+        </div>`;
+      return;
+    }
+    document.getElementById('step2').classList.add('done');
+    document.getElementById('step3').style.display = 'block';
+    document.getElementById('step3').scrollIntoView({behavior:'smooth'});
+    loadConsent();
+  } catch (err) {
+    document.getElementById('step2Err').innerHTML = `<div class="alert err">${err.message}</div>`;
+  }
+});
+
+let consentVersion = null;
+async function loadConsent() {
+  try {
+    const r = await fetch('/api/consent-text');
+    const data = await r.json();
+    consentVersion = data.version;
+    document.getElementById('consentText').textContent = data.text;
+  } catch (err) {
+    document.getElementById('consentText').textContent = 'Failed to load consent: ' + err.message;
+  }
+}
+
+document.getElementById('btnSubmitConsent').addEventListener('click', async () => {
+  const sig = document.getElementById('sigName').value.trim();
+  const witness = document.getElementById('witness').value.trim();
+  if (sig.length < 3) {
+    document.getElementById('step3Err').innerHTML = '<div class="alert err">Full name required.</div>';
+    return;
+  }
+  try {
+    const r = await fetch(`/api/clients/${clientId}/consent`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ signature_name: sig, consent_version: consentVersion, witnessed_by: witness || null }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    document.getElementById('step3').classList.add('done');
+    document.getElementById('step4').style.display = 'block';
+    document.getElementById('scheduleLink').href = `/client/${clientId}?schedule=1`;
+    document.getElementById('step4').scrollIntoView({behavior:'smooth'});
+  } catch (err) {
+    document.getElementById('step3Err').innerHTML = `<div class="alert err">${err.message}</div>`;
+  }
+});
+</script>
+</body>
+</html>
