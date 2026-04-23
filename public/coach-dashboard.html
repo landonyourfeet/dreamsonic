@@ -3,107 +3,222 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DreamSonic — Dashboard</title>
+<title>Project Halo · Operations Console</title>
+<link rel="stylesheet" href="/static/halo-core.css">
 <style>
-  :root {
-    --bg:#0a0f1a;--panel:#0f1624;--panel-2:#121c2e;--border:#1d2a42;
-    --text:#d8e3f3;--text-dim:#6a7a92;
-    --cyan:#22d3ee;--green:#34d399;--amber:#f59e0b;--red:#ef4444;--purple:#a78bfa;
-    --mono:'SFMono-Regular','Consolas','Menlo',monospace;
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; position: relative; z-index: 1; }
+
+  /* Stats grid */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+  .stat { padding: 18px 20px; }
+  .stat .label {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 2px;
+    color: var(--halo-text-faint); text-transform: uppercase; margin-bottom: 10px;
   }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text);
-         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }
-  .topbar { background:var(--panel); border-bottom:1px solid var(--border);
-            padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
-  .brand { font-family:var(--mono); font-size:11px; letter-spacing:2px;
-           color:var(--cyan); text-transform:uppercase; }
-  .brand .sub { color:var(--text-dim); margin-left:8px; }
-  .wrap { max-width:1400px; margin:0 auto; padding:24px; }
-  .grid { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; margin-bottom:24px; }
-  .stat { background:var(--panel); border:1px solid var(--border); padding:20px; }
-  .stat .label { font-family:var(--mono); font-size:10px; letter-spacing:2px;
-                 color:var(--text-dim); text-transform:uppercase; margin-bottom:8px; }
-  .stat .val { font-family:var(--mono); font-size:32px; font-weight:300; color:var(--text); }
-  .stat .val.accent { color:var(--cyan); }
-  .stat .val.pos { color:var(--green); }
-  .stat .val.warn { color:var(--amber); }
-  .stat .val.err { color:var(--red); }
-  .row { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px; }
-  .card { background:var(--panel); border:1px solid var(--border); }
-  .card h2 { font-family:var(--mono); font-size:10px; letter-spacing:2px;
-             color:var(--text-dim); text-transform:uppercase; padding:16px 20px;
-             margin:0; border-bottom:1px solid var(--border);
-             display:flex; justify-content:space-between; align-items:center; }
-  table { width:100%; border-collapse:collapse; }
-  th, td { padding:10px 20px; text-align:left; border-bottom:1px solid var(--border); }
-  th { font-family:var(--mono); font-size:10px; letter-spacing:1.5px; color:var(--text-dim);
-       text-transform:uppercase; font-weight:normal; }
-  td { font-size:13px; }
-  td .pill { font-family:var(--mono); font-size:10px; padding:2px 8px;
-             border-radius:12px; letter-spacing:1px; }
-  .pill.ok { background:rgba(52,211,153,0.15); color:var(--green); }
-  .pill.warn { background:rgba(245,158,11,0.15); color:var(--amber); }
-  .pill.err { background:rgba(239,68,68,0.15); color:var(--red); }
-  .pill.idle { background:rgba(106,122,146,0.15); color:var(--text-dim); }
-  .btn {
-    padding:8px 16px; background:var(--panel-2); border:1px solid var(--border);
-    color:var(--text); font-family:var(--mono); font-size:11px;
-    letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; border-radius:2px;
-    text-decoration:none; display:inline-block;
+  .stat .val {
+    font-family: var(--mono); font-size: 34px; font-weight: 300;
+    color: var(--halo-text); letter-spacing: 2px; line-height: 1;
   }
-  .btn:hover { border-color:var(--cyan); color:var(--cyan); }
-  .btn.primary { background:var(--cyan); color:#000; border-color:var(--cyan); font-weight:600; }
-  .btn.small { padding:4px 10px; font-size:10px; }
-  .empty { padding:30px; text-align:center; color:var(--text-dim); font-size:12px; }
-  a { color:var(--cyan); text-decoration:none; }
+  .stat .val.cyan   { color: var(--halo-cyan); text-shadow: 0 0 10px rgba(0,212,255,0.4); }
+  .stat .val.green  { color: var(--halo-green); text-shadow: 0 0 8px rgba(0,255,136,0.35); }
+  .stat .val.amber  { color: var(--halo-amber); }
+  .stat .val.red    { color: var(--halo-red); }
+  .stat .foot { font-family: var(--mono); font-size: 9px; letter-spacing: 1.5px;
+                color: var(--halo-text-faint); margin-top: 8px; text-transform: uppercase; }
+
+  /* Main row */
+  .row { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px; }
+
+  /* Operatives panel */
+  .op-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dashed rgba(22, 48, 79, 0.4);
+  }
+  .op-row:last-child { border-bottom: none; }
+  .op-avatar {
+    width: 36px; height: 36px;
+    border: 1px solid var(--halo-line-hot);
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--halo-cyan); letter-spacing: 1px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .op-avatar::after {
+    content: ''; position: absolute; bottom: -2px; right: -2px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--halo-green); box-shadow: 0 0 6px var(--halo-green);
+  }
+  .op-row .info { flex: 1; }
+  .op-row .name { font-family: var(--mono); font-size: 12px; color: var(--halo-text); letter-spacing: 1px; }
+  .op-row .role { font-family: var(--mono); font-size: 10px; color: var(--halo-text-faint);
+                  letter-spacing: 1.5px; text-transform: uppercase; margin-top: 2px; }
+
+  /* Upcoming ops list */
+  .upcoming-item {
+    padding: 12px 0;
+    border-bottom: 1px dashed rgba(22, 48, 79, 0.4);
+  }
+  .upcoming-item:last-child { border-bottom: none; }
+  .upcoming-item .when {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--halo-cyan); letter-spacing: 1.5px; text-transform: uppercase;
+  }
+  .upcoming-item .who {
+    font-family: var(--mono); font-size: 12px; color: var(--halo-text);
+    margin: 4px 0 2px;
+  }
+  .upcoming-item .proto {
+    font-family: var(--mono); font-size: 10px; color: var(--halo-text-faint);
+    letter-spacing: 1px;
+  }
+  .empty { padding: 30px 10px; text-align: center; color: var(--halo-text-faint);
+           font-family: var(--mono); font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; }
+
+  .time-readout {
+    font-family: var(--mono); font-size: 11px; color: var(--halo-cyan);
+    letter-spacing: 2px;
+  }
 </style>
 </head>
-<body>
-<div class="topbar">
-  <div class="brand">DREAMSONIC <span class="sub">· COACH CONSOLE</span></div>
-  <div style="display:flex;gap:10px;">
-    <a class="btn primary" href="/intake">+ New Client</a>
-    <a class="btn" href="/protocols">Protocols</a>
+<body class="scanlines">
+
+<!-- Classification bar -->
+<div class="classification">
+  <div><span class="dot"></span>PROJECT HALO · CLASSIFIED · INTERNAL CONSOLE</div>
+  <div class="meta" id="utcTime">—</div>
+</div>
+
+<!-- Main console header -->
+<div class="console-header">
+  <div class="halo-brand">
+    HALO<span class="slash">//</span><span class="sub">OPERATIONS CONSOLE</span>
+  </div>
+  <div class="op-status">
+    <div>SESSION ID <span class="v" id="sessionIdReadout">—</span></div>
+    <div>UPTIME <span class="v" id="uptimeReadout">00:00</span></div>
+    <a class="btn primary" href="/intake">+ NEW CLIENT</a>
   </div>
 </div>
 
 <div class="wrap">
-  <div class="grid" id="statsGrid">
-    <div class="stat"><div class="label">Active Clients</div><div class="val accent" id="sActive">—</div></div>
-    <div class="stat"><div class="label">Ready to Book</div><div class="val pos" id="sReady">—</div></div>
-    <div class="stat"><div class="label">Sessions 30d</div><div class="val accent" id="s30d">—</div></div>
-    <div class="stat"><div class="label">Disqualified</div><div class="val warn" id="sDQ">—</div></div>
+
+  <!-- Stats grid -->
+  <div class="stats">
+    <div class="hp stat"><span class="corners"></span>
+      <div class="label">Active Clients</div>
+      <div class="val cyan" id="sActive">—</div>
+      <div class="foot">cleared for operations</div>
+    </div>
+    <div class="hp stat"><span class="corners"></span>
+      <div class="label">Ready to Deploy</div>
+      <div class="val green" id="sReady">—</div>
+      <div class="foot">medical + consent on file</div>
+    </div>
+    <div class="hp stat"><span class="corners"></span>
+      <div class="label">Sessions · 30 day</div>
+      <div class="val cyan" id="s30d">—</div>
+      <div class="foot">completed operations</div>
+    </div>
+    <div class="hp stat"><span class="corners"></span>
+      <div class="label">Disqualified</div>
+      <div class="val amber" id="sDQ">—</div>
+      <div class="foot">failed medical gate</div>
+    </div>
   </div>
 
+  <!-- Main row -->
   <div class="row">
-    <div class="card">
-      <h2>Clients <a class="btn primary small" href="/intake">+ New Client</a></h2>
+    <!-- Clients table -->
+    <div class="hp"><span class="corners"></span>
+      <div class="hp-title">
+        <span>Client Roster</span>
+        <span class="meta" id="clientCountMeta">—</span>
+      </div>
       <table>
         <thead><tr>
-          <th>Name</th><th>Status</th><th>Consent</th><th>Sessions</th><th>Last Session</th><th></th>
+          <th>Name</th><th>Clearance</th><th>Consent</th><th>Ops</th><th>Last</th><th style="width:1%"></th>
         </tr></thead>
         <tbody id="clientsBody"><tr><td colspan="6" class="empty">loading…</td></tr></tbody>
       </table>
     </div>
-    <div class="card">
-      <h2>Upcoming Sessions</h2>
-      <div id="upcomingBody" class="empty">loading…</div>
+
+    <!-- Upcoming + Personnel -->
+    <div>
+      <div class="hp" style="margin-bottom: 14px;"><span class="corners"></span>
+        <div class="hp-title">
+          <span>Upcoming Operations</span>
+          <span class="meta">T-QUEUE</span>
+        </div>
+        <div id="upcomingBody" class="empty">loading…</div>
+      </div>
+
+      <div class="hp"><span class="corners"></span>
+        <div class="hp-title">
+          <span>Personnel Roster</span>
+          <span class="meta">03 ACTIVE</span>
+        </div>
+        <div class="op-row">
+          <div class="op-avatar">LW</div>
+          <div class="info">
+            <div class="name">Landon Whitt</div>
+            <div class="role">Operations Lead · Cap</div>
+          </div>
+        </div>
+        <div class="op-row">
+          <div class="op-avatar">JB</div>
+          <div class="info">
+            <div class="name">Janelle Bacolod</div>
+            <div class="role">Coordinator · remote</div>
+          </div>
+        </div>
+        <div class="op-row">
+          <div class="op-avatar">JP</div>
+          <div class="info">
+            <div class="name">Jodi Porter</div>
+            <div class="role">Field Coordinator</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Recent Sessions</h2>
+  <!-- Recent sessions -->
+  <div class="hp"><span class="corners"></span>
+    <div class="hp-title">
+      <span>Operations Log</span>
+      <span class="meta">MOST RECENT · 20</span>
+    </div>
     <table>
       <thead><tr>
-        <th>When</th><th>Client</th><th>Protocol</th><th>Status</th><th></th>
+        <th>Timestamp</th><th>Client</th><th>Protocol</th><th>Status</th><th style="width:1%"></th>
       </tr></thead>
       <tbody id="recentBody"><tr><td colspan="5" class="empty">loading…</td></tr></tbody>
     </table>
   </div>
+
 </div>
 
 <script>
+// Live time readouts
+const bootTime = Date.now();
+function updateReadouts() {
+  const now = new Date();
+  document.getElementById('utcTime').textContent =
+    now.toISOString().replace('T', ' ').substr(0, 19) + ' UTC';
+  const upS = Math.floor((Date.now() - bootTime) / 1000);
+  const mm = String(Math.floor(upS/60)).padStart(2,'0');
+  const ss = String(upS % 60).padStart(2,'0');
+  document.getElementById('uptimeReadout').textContent = `${mm}:${ss}`;
+}
+updateReadouts();
+setInterval(updateReadouts, 1000);
+
+// Session ID: random 6-char hex, stable per load
+document.getElementById('sessionIdReadout').textContent =
+  '0x' + Math.floor(Math.random() * 16777215).toString(16).toUpperCase().padStart(6, '0');
+
 async function load() {
   try {
     const [stats, clients, recent] = await Promise.all([
@@ -113,45 +228,51 @@ async function load() {
     ]);
 
     document.getElementById('sActive').textContent = stats.clients.active_clients;
-    document.getElementById('sReady').textContent = stats.clients.ready_clients;
-    document.getElementById('s30d').textContent = stats.sessions.completed_30d;
-    document.getElementById('sDQ').textContent = stats.clients.disqualified;
+    document.getElementById('sReady').textContent  = stats.clients.ready_clients;
+    document.getElementById('s30d').textContent    = stats.sessions.completed_30d;
+    document.getElementById('sDQ').textContent     = stats.clients.disqualified;
+
+    document.getElementById('clientCountMeta').textContent =
+      `${clients.clients.length} ON FILE`;
 
     // Upcoming
     const up = stats.upcoming;
     if (!up.length) {
-      document.getElementById('upcomingBody').innerHTML = '<div class="empty">No upcoming sessions.</div>';
+      document.getElementById('upcomingBody').innerHTML =
+        '<div class="empty">queue empty</div>';
     } else {
-      document.getElementById('upcomingBody').innerHTML = up.map(u => `
-        <div style="padding:10px 20px;border-bottom:1px solid var(--border);">
-          <div style="font-family:var(--mono);font-size:11px;color:var(--cyan);">
-            ${new Date(u.scheduled_at).toLocaleString()}
-          </div>
-          <div style="margin-top:4px;">${u.first_name} ${u.last_name_initial}. — ${u.protocol_name}</div>
-          <div style="margin-top:6px;"><a class="btn small" href="/session/${u.id}/run">Open Runner →</a></div>
-        </div>
-      `).join('');
+      document.getElementById('upcomingBody').innerHTML = up.map(u => {
+        const when = new Date(u.scheduled_at);
+        return `<div class="upcoming-item">
+          <div class="when">${when.toLocaleDateString()} · ${when.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+          <div class="who">${u.first_name} ${u.last_name_initial}.</div>
+          <div class="proto">${u.protocol_name}</div>
+          <div style="margin-top:8px;"><a class="btn small" href="/session/${u.id}/run">◂ engage runner</a></div>
+        </div>`;
+      }).join('');
     }
 
     // Clients
     if (!clients.clients.length) {
-      document.getElementById('clientsBody').innerHTML = '<tr><td colspan="6" class="empty">No clients yet. Click + New Client.</td></tr>';
+      document.getElementById('clientsBody').innerHTML =
+        '<tr><td colspan="6" class="empty">no clients on file · create one</td></tr>';
     } else {
       document.getElementById('clientsBody').innerHTML = clients.clients.map(c => {
         const statusCls = c.medical_clearance_status === 'cleared' ? 'ok'
           : c.medical_clearance_status === 'disqualified' ? 'err' : 'warn';
         const consentCls = c.consent_signed_at ? 'ok' : 'idle';
-        const lastSession = c.last_session_at ? new Date(c.last_session_at).toLocaleDateString() : '—';
+        const lastSession = c.last_session_at
+          ? new Date(c.last_session_at).toLocaleDateString() : '—';
         return `<tr>
           <td><a href="/client/${c.id}">${c.first_name} ${c.last_name_initial}.</a></td>
           <td><span class="pill ${statusCls}">${c.medical_clearance_status}</span></td>
           <td><span class="pill ${consentCls}">${c.consent_signed_at ? 'signed' : 'missing'}</span></td>
           <td>${c.completed_sessions}</td>
           <td>${lastSession}</td>
-          <td>
-            <a class="btn small" href="/client/${c.id}">Open</a>
+          <td style="white-space:nowrap;">
+            <a class="btn small" href="/client/${c.id}">dossier</a>
             ${c.medical_clearance_status === 'cleared' && c.consent_signed_at
-              ? `<a class="btn small primary" href="/client/${c.id}?schedule=1">Schedule</a>` : ''}
+              ? `<a class="btn small primary" href="/client/${c.id}?schedule=1">schedule</a>` : ''}
           </td>
         </tr>`;
       }).join('');
@@ -159,12 +280,15 @@ async function load() {
 
     // Recent
     if (!recent.sessions.length) {
-      document.getElementById('recentBody').innerHTML = '<tr><td colspan="5" class="empty">No sessions yet.</td></tr>';
+      document.getElementById('recentBody').innerHTML =
+        '<tr><td colspan="5" class="empty">no operations logged</td></tr>';
     } else {
       document.getElementById('recentBody').innerHTML = recent.sessions.map(s => {
-        const when = s.started_at ? new Date(s.started_at).toLocaleString()
-                   : s.scheduled_at ? new Date(s.scheduled_at).toLocaleString() + ' (scheduled)'
-                   : '—';
+        const when = s.started_at
+          ? new Date(s.started_at).toLocaleString()
+          : s.scheduled_at
+            ? new Date(s.scheduled_at).toLocaleString() + ' · sched'
+            : '—';
         const cls = s.status === 'completed' ? 'ok'
                   : s.status === 'stopped_early' ? 'warn'
                   : s.status === 'cancelled' ? 'err' : 'idle';
@@ -172,14 +296,14 @@ async function load() {
           <td>${when}</td>
           <td>${s.first_name} ${s.last_name_initial}.</td>
           <td>${s.protocol_name}</td>
-          <td><span class="pill ${cls}">${s.status}</span></td>
-          <td><a class="btn small" href="/session/${s.id}/run">Open</a></td>
+          <td><span class="pill ${cls}">${s.status.replace('_',' ')}</span></td>
+          <td><a class="btn small" href="/session/${s.id}/run">open</a></td>
         </tr>`;
       }).join('');
     }
   } catch (err) {
     console.error(err);
-    alert('Failed to load dashboard: ' + err.message);
+    alert('Console load failed: ' + err.message);
   }
 }
 load();
