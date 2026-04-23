@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DreamSonic · The Orb</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100vw; height: 100vh;
+    background: #020108;
+    overflow: hidden;
+    color: #d4baff;
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    cursor: none;
+  }
+  body.show-cursor { cursor: default; }
+
+  canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .hud {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.75;
+    transition: opacity 0.6s ease;
+  }
+  body.focus-mode .hud { opacity: 0; }
+
+  .hud .brand {
+    position: absolute;
+    top: 24px; left: 28px;
+    font-size: 10px; letter-spacing: 3px;
+    color: #6b5ca8;
+  }
+  .hud .brand .dot {
+    display: inline-block;
+    width: 5px; height: 5px;
+    background: #00d4ff;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    box-shadow: 0 0 6px #00d4ff;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .hud .session {
+    position: absolute;
+    top: 24px; right: 28px;
+    font-size: 10px; letter-spacing: 2px;
+    color: #5a4f8a;
+  }
+
+  .hud .target {
+    position: absolute;
+    bottom: 32px; left: 28px;
+  }
+  .hud .target .k { font-size: 9px; letter-spacing: 2px; color: #6b5ca8; }
+  .hud .target .v { font-size: 15px; letter-spacing: 1.5px; color: #d4baff; margin-top: 4px; }
+  .hud .target .sub { font-size: 10px; letter-spacing: 1.5px; color: #6b5ca8; margin-top: 3px; }
+
+  .hud .copilot {
+    position: absolute;
+    bottom: 32px; left: 50%; transform: translateX(-50%);
+    text-align: center;
+  }
+  .hud .copilot .label {
+    font-size: 9px; letter-spacing: 2px; color: #6b5ca8; margin-bottom: 6px;
+  }
+  .hud .copilot .bar {
+    width: 180px; height: 4px;
+    background: #1a1440;
+    position: relative;
+    margin: 0 auto;
+  }
+  .hud .copilot .fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    background: #c289ff;
+    width: 0%;
+    transition: width 1s ease;
+  }
+  .hud .copilot .assist {
+    margin-top: 6px; font-size: 11px; color: #d4baff; letter-spacing: 1px;
+  }
+
+  .hud .driving {
+    position: absolute;
+    bottom: 32px; right: 28px; text-align: right;
+  }
+  .hud .driving .k { font-size: 9px; letter-spacing: 2px; color: #6b5ca8; }
+  .hud .driving .v { font-size: 26px; color: #d4baff; letter-spacing: 1px; margin-top: 2px; }
+  .hud .driving .sub { font-size: 9px; letter-spacing: 1.5px; color: #5a4f8a; margin-top: 2px; }
+
+  .state-banner {
+    position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; letter-spacing: 3px;
+    color: #c289ff;
+    padding: 4px 14px;
+    border: 1px solid rgba(194, 137, 255, 0.3);
+    z-index: 11;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .state-banner.show { opacity: 1; }
+
+  .disconnected-overlay {
+    position: absolute; inset: 0;
+    background: rgba(2, 1, 8, 0.92);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 20;
+    flex-direction: column; gap: 14px;
+  }
+  .disconnected-overlay.show { display: flex; }
+  .disconnected-overlay .title {
+    font-size: 14px; letter-spacing: 3px; color: #c289ff;
+  }
+  .disconnected-overlay .sub {
+    font-size: 11px; letter-spacing: 1.5px; color: #6b5ca8;
+  }
+
+  .aborting {
+    position: absolute; inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+    transition: opacity 2s ease;
+  }
+  .aborting.active { opacity: 1; pointer-events: auto; }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div class="hud">
+    <div class="brand"><span class="dot"></span>HALO · LIVE SESSION</div>
+    <div class="session" id="sessionReadout">—</div>
+    <div class="target">
+      <div class="k">TARGET BAND</div>
+      <div class="v" id="targetBand">—</div>
+      <div class="sub" id="targetFreq">— Hz</div>
+    </div>
+    <div class="copilot">
+      <div class="label">COPILOT SHARE</div>
+      <div class="bar"><div class="fill" id="copilotFill"></div></div>
+      <div class="assist" id="copilotAssist">— assist</div>
+    </div>
+    <div class="driving">
+      <div class="k">YOU ARE DRIVING</div>
+      <div class="v" id="drivingPct">—</div>
+      <div class="sub">growing each session</div>
+    </div>
+  </div>
+
+  <div class="state-banner" id="stateBanner">NEUTRAL</div>
+
+  <div class="disconnected-overlay" id="discOverlay">
+    <div class="title">⎈ AWAITING SIGNAL</div>
+    <div class="sub" id="discDetail">Connecting to session…</div>
+  </div>
+
+  <div class="aborting" id="abortingLayer"></div>
+
+<script>
+'use strict';
+// =========================================================================
+// THE ORB — stimulation player
+//
+// Renders a cosmic scene with a central pulsing orb that entrains at the
+// commanded frequency. Safety constraints are enforced IN THIS FILE and
+// CANNOT be bypassed by any incoming directive:
+//   - Pulse area ≤ 30% of screen area
+//   - Luminance oscillates only between 25% and 75% of orb max brightness
+//   - Frequency hard-clamped to 2-14 Hz (matches server clamp; double-check here)
+//   - Amplitude ramps up over 10s on start, down over 10s on stop
+//   - Background space field NEVER pulses
+// =========================================================================
+
+// ---------- Safety constants (NOT directive-tunable) ----------
+const SAFETY = Object.freeze({
+  MIN_FREQ_HZ:       2.0,
+  MAX_FREQ_HZ:      14.0,
+  PULSE_AREA_CAP:    0.30,   // orb never exceeds 30% of screen area at peak
+  LUM_MIN:           0.25,   // pulse trough
+  LUM_MAX:           0.75,   // pulse peak (contrast capped)
+  FADE_RAMP_MS:   10000,
+});
+
+// ---------- URL params ----------
+const params = new URLSearchParams(location.search);
+const sessionId = parseInt(params.get('session') || '0', 10);
+
+// ---------- State ----------
+let targetHz           = 10;
+let intensityPct       = 0;          // start at 0, ramp up on first directive
+let effectiveIntensity = 0;          // after ramp
+let targetIntensity    = 0;          // what we want to reach
+let rampStartTime      = performance.now();
+let rampStartValue     = 0;
+let rampDurationMs     = SAFETY.FADE_RAMP_MS;
+let state              = 'BASELINE_ESTABLISHING';
+let copilotShare       = 100;        // %
+let targetBand         = 'alpha';
+let coherenceBoost     = 0;          // 0-1, bumped on coherence events, decays
+let inZone             = false;
+
+// ---------- Canvas setup ----------
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W = 0, H = 0, cx = 0, cy = 0;
+let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx = W / 2;
+  cy = H / 2;
+  rebuildStarField();
+}
+window.addEventListener('resize', resize);
+
+// ---------- Static star field (doesn't pulse) ----------
+let stars = [];
+function rebuildStarField() {
+  stars = [];
+  const count = Math.floor(W * H / 4500);
+  for (let i = 0; i < count; i++) {
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.1 + 0.2,
+      alpha: 0.3 + Math.random() * 0.6,
+      twinkleSpeed: 0.3 + Math.random() * 1.2,
+      twinklePhase: Math.random() * Math.PI * 2,
+    });
+  }
+}
+
+// ---------- Nebula wisps (slow, not pulsing) ----------
+const nebulae = [
+  { cx: 0.15, cy: 0.25, r: 0.18, color: [45, 30, 90], alpha: 0.55 },
+  { cx: 0.85, cy: 0.72, r: 0.22, color: [60, 35, 100], alpha: 0.5 },
+  { cx: 0.78, cy: 0.18, r: 0.13, color: [40, 25, 80], alpha: 0.45 },
+  { cx: 0.22, cy: 0.80, r: 0.14, color: [50, 30, 95], alpha: 0.5 },
+];
+
+// ---------- Orbital particles ----------
+const orbits = [
+  { baseRadius: 0.34, ry: 1.00, angle: 0, tilt: 0,          speed: 0.00025, particles: 4 },
+  { baseRadius: 0.26, ry: 0.33, angle: 0, tilt: 0.6,        speed: 0.00040, particles: 3 },
+  { baseRadius: 0.21, ry: 0.34, angle: 0, tilt: -0.44,      speed: 0.00055, particles: 2 },
+];
+
+// ---------- Main render loop ----------
+let lastFrameTime = performance.now();
+let frameCount = 0;
+let frameRate = 60;
+let accumTime = 0;
+
+function render(now) {
+  const dt = now - lastFrameTime;
+  lastFrameTime = now;
+  accumTime += dt;
+  frameCount++;
+  if (frameCount % 60 === 0) frameRate = 1000 / dt;
+
+  // Intensity ramp (fade in/out)
+  const rampProgress = Math.min(1, (now - rampStartTime) / rampDurationMs);
+  effectiveIntensity = rampStartValue + (targetIntensity - rampStartValue) * rampProgress;
+
+  // Clear to deep void
+  ctx.fillStyle = '#020108';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw nebula wisps (static, just slow breathing)
+  drawNebulae(now);
+
+  // Draw star field (twinkles but doesn't strobe coherently)
+  drawStars(now);
+
+  // Draw orbital rings (the autopilot layer - rotate at fixed speeds)
+  drawOrbits(now);
+
+  // Draw the ORB (the only element that pulses at target Hz)
+  drawOrb(now);
+
+  requestAnimationFrame(render);
+}
+
+function drawNebulae(now) {
+  for (const n of nebulae) {
+    const breath = 0.85 + 0.15 * Math.sin(now / 6000 + n.cx * 10);
+    const x = n.cx * W, y = n.cy * H;
+    const r = n.r * Math.min(W, H) * breath;
+    // Manual radial falloff using concentric fills (no filter = no streaming flash)
+    for (let i = 0; i < 4; i++) {
+      const f = 1 - i / 4;
+      const alpha = n.alpha * f * f * 0.4;
+      ctx.fillStyle = `rgba(${n.color[0]},${n.color[1]},${n.color[2]},${alpha})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r * f, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawStars(now) {
+  for (const s of stars) {
+    const twinkle = 0.7 + 0.3 * Math.sin(now * 0.001 * s.twinkleSpeed + s.twinklePhase);
+    ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha * twinkle})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawOrbits(now) {
+  const minDim = Math.min(W, H);
+  // Autopilot assist modulates ring opacity — high assist = visible rings
+  const ringOpacity = 0.45 * (copilotShare / 100) + 0.15;
+
+  for (const o of orbits) {
+    o.angle = now * o.speed;
+    const rx = o.baseRadius * minDim;
+    const ry = rx * o.ry;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(o.tilt);
+
+    // Ring outline
+    ctx.strokeStyle = `rgba(58, 42, 138, ${ringOpacity * 0.8})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Orbit particles
+    for (let i = 0; i < o.particles; i++) {
+      const pAngle = o.angle + (i / o.particles) * Math.PI * 2;
+      const px = Math.cos(pAngle) * rx;
+      const py = Math.sin(pAngle) * ry;
+      ctx.fillStyle = `rgba(212, 186, 255, ${ringOpacity + 0.3})`;
+      ctx.beginPath();
+      ctx.arc(px, py, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawOrb(now) {
+  // --- PULSE COMPUTATION (THE ENTRAINMENT STIMULUS) ---
+  // Clamp frequency again at render time (defensive, even if server already clamped)
+  const hz = Math.max(SAFETY.MIN_FREQ_HZ, Math.min(SAFETY.MAX_FREQ_HZ, targetHz));
+  // Sine pulse at the target Hz, range [0, 1]
+  const phase = (now / 1000) * hz * Math.PI * 2;
+  const sineNorm = (Math.sin(phase) + 1) / 2;  // 0..1
+
+  // Apply luminance ceiling/floor — contrast is capped
+  const lumMin = SAFETY.LUM_MIN;
+  const lumMax = SAFETY.LUM_MAX;
+  const lumRange = lumMax - lumMin;
+  // Intensity scales how much pulse shows; effectiveIntensity is 0-100
+  const intNorm = effectiveIntensity / 100;
+  const pulseLum = lumMin + sineNorm * lumRange * intNorm
+                 + (1 - intNorm) * ((lumMin + lumMax) / 2);
+
+  // --- ORB SIZE (capped at 30% of screen area) ---
+  const maxRadius = Math.sqrt(W * H * SAFETY.PULSE_AREA_CAP / Math.PI);
+  const baseRadius = Math.min(W, H) * 0.06;
+  const zoneBonus = inZone ? 1.25 : 1.0;
+  const coherenceBonus = 1 + coherenceBoost * 0.35;
+  let orbRadius = baseRadius * zoneBonus * coherenceBonus;
+  if (orbRadius > maxRadius) orbRadius = maxRadius;
+
+  // Decay the coherence boost
+  if (coherenceBoost > 0) coherenceBoost = Math.max(0, coherenceBoost - 0.003);
+
+  // --- DRAW ORB ---
+  // Outermost halo (largest, dimmest)
+  const haloRadius = orbRadius * 3.2;
+  ctx.fillStyle = `rgba(42, 26, 106, ${0.18 * pulseLum})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, haloRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(58, 39, 160, ${0.28 * pulseLum})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, orbRadius * 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(86, 55, 201, ${0.42 * pulseLum})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, orbRadius * 1.9, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(122, 86, 232, ${0.6 * pulseLum})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, orbRadius * 1.45, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(165, 131, 255, ${0.8 * pulseLum})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, orbRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(212, 186, 255, ${0.9 * pulseLum})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, orbRadius * 0.7, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(240, 224, 255, ${pulseLum})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, orbRadius * 0.44, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(255, 255, 255, ${pulseLum})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, orbRadius * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+
+  // --- FOUR-POINT STAR (coherence bloom, rare/spiritual) ---
+  if (coherenceBoost > 0.1) {
+    const starAlpha = coherenceBoost * 0.6;
+    const starLen = orbRadius * 2.2 * coherenceBoost;
+    drawStarPoint(cx, cy, starLen, 0, starAlpha);
+    drawStarPoint(cx, cy, starLen, Math.PI / 2, starAlpha);
+    drawStarPoint(cx, cy, starLen, Math.PI, starAlpha);
+    drawStarPoint(cx, cy, starLen, 3 * Math.PI / 2, starAlpha);
+  }
+}
+
+function drawStarPoint(x, y, length, angle, alpha) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = `rgba(240, 216, 255, ${alpha})`;
+  ctx.beginPath();
+  ctx.moveTo(length, 0);
+  ctx.lineTo(length * 0.4, -3);
+  ctx.lineTo(length * 0.2, 0);
+  ctx.lineTo(length * 0.4, 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// ---------- Audio (isochronic tone at target Hz) ----------
+let audioCtx = null;
+let carrierOsc = null;
+let amGain = null;
+let masterGain = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Carrier frequency — pleasant mid-range (200 Hz)
+    carrierOsc = audioCtx.createOscillator();
+    carrierOsc.type = 'sine';
+    carrierOsc.frequency.value = 200;
+    // Amplitude modulation LFO at the target Hz produces the isochronic pulse
+    const lfo = audioCtx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = targetHz;
+    amGain = audioCtx.createGain();
+    amGain.gain.value = 0;
+    // LFO output maps sine [-1..1] to gain [0..1] via a gain node trick:
+    // we use the LFO to modulate a gain, with its offset at 0.5 and depth 0.5
+    const lfoScaler = audioCtx.createGain();
+    lfoScaler.gain.value = 0.5;   // LFO amplitude swings by ±0.5
+    lfo.connect(lfoScaler);
+    lfoScaler.connect(amGain.gain);
+    // Constant bias of 0.5 so gain swings 0..1 not -0.5..0.5
+    const biasOsc = audioCtx.createConstantSource();
+    biasOsc.offset.value = 0.5;
+    biasOsc.connect(amGain.gain);
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0;    // start silent, ramp up with intensity
+
+    carrierOsc.connect(amGain);
+    amGain.connect(masterGain);
+    masterGain.connect(audioCtx.destination);
+
+    carrierOsc.start();
+    lfo.start();
+    biasOsc.start();
+    window._dsLfo = lfo; // so we can update frequency later
+  } catch (e) {
+    console.warn('[audio] init failed:', e.message);
+  }
+}
+
+function updateAudio() {
+  if (!audioCtx || !masterGain) return;
+  // Volume scales with intensity, max at 15% of linear gain (gentle, not loud)
+  const targetGain = (effectiveIntensity / 100) * 0.15;
+  masterGain.gain.linearRampToValueAtTime(
+    targetGain,
+    audioCtx.currentTime + 0.1
+  );
+  if (window._dsLfo) {
+    window._dsLfo.frequency.linearRampToValueAtTime(
+      Math.max(SAFETY.MIN_FREQ_HZ, Math.min(SAFETY.MAX_FREQ_HZ, targetHz)),
+      audioCtx.currentTime + 0.2
+    );
+  }
+}
+
+setInterval(updateAudio, 100);
+
+// ---------- Directive handling ----------
+function applyDirective(d) {
+  if (!d) return;
+  // Frequency clamp — defense in depth; server also clamps
+  if (typeof d.frequencyHz === 'number') {
+    targetHz = Math.max(SAFETY.MIN_FREQ_HZ, Math.min(SAFETY.MAX_FREQ_HZ, d.frequencyHz));
+  }
+  if (typeof d.intensityPct === 'number') {
+    const newTarget = Math.max(0, Math.min(100, d.intensityPct));
+    // Only start a ramp if the value actually changed meaningfully
+    if (Math.abs(newTarget - targetIntensity) > 0.5) {
+      rampStartValue = effectiveIntensity;
+      targetIntensity = newTarget;
+      rampStartTime = performance.now();
+      // Short ramp (1.5s) for normal adjustments, long (10s) for start/stop
+      rampDurationMs = (newTarget === 0 || targetIntensity === 0 && newTarget > 0)
+        ? SAFETY.FADE_RAMP_MS : 1500;
+    }
+  }
+  if (d.action) {
+    updateStateBanner(d.action, d.reason);
+  }
+  if (d.target_band) {
+    targetBand = d.target_band;
+    document.getElementById('targetBand').textContent = targetBand.toUpperCase();
+  }
+  // Update readouts
+  document.getElementById('targetFreq').textContent = targetHz.toFixed(1) + ' Hz';
+  // Coherence bloom on specific actions
+  if (d.action === 'ALPHA_BOOST' || d.action === 'REINFORCE') {
+    coherenceBoost = 1.0;
+    inZone = true;
+    setTimeout(() => { inZone = false; }, 4000);
+  }
+}
+
+function updateStateBanner(action, reason) {
+  const banner = document.getElementById('stateBanner');
+  const labels = {
+    HOLD: 'HOLDING',
+    FREEZE: 'SIGNAL PAUSED',
+    DE_ESCALATE: 'EASING · DETECTED TENSION',
+    RE_ENGAGE: 'RE-ENGAGING',
+    ALPHA_BOOST: 'LOCKING TO ALPHA',
+    REINFORCE: 'ON TARGET',
+    ACTIVATION_TRAIN: 'ACTIVATION TRAINING',
+  };
+  banner.textContent = labels[action] || action;
+  banner.classList.add('show');
+  clearTimeout(window._bannerTimer);
+  window._bannerTimer = setTimeout(() => banner.classList.remove('show'), 3500);
+}
+
+function applyModeChange(msg) {
+  const mode = msg.payload?.mode;
+  if (mode === 'abort') {
+    document.getElementById('abortingLayer').classList.add('active');
+    targetIntensity = 0;
+    rampStartValue = effectiveIntensity;
+    rampStartTime = performance.now();
+    rampDurationMs = SAFETY.FADE_RAMP_MS;
+    setTimeout(() => {
+      if (audioCtx) audioCtx.suspend();
+    }, SAFETY.FADE_RAMP_MS);
+  } else if (mode === 'resume') {
+    document.getElementById('abortingLayer').classList.remove('active');
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  if (msg.payload?.copilot_share !== undefined) {
+    copilotShare = msg.payload.copilot_share;
+    document.getElementById('copilotFill').style.width = copilotShare + '%';
+    document.getElementById('copilotAssist').textContent = copilotShare + '% assist';
+    document.getElementById('drivingPct').textContent = (100 - copilotShare) + '%';
+  }
+}
+
+// ---------- WebSocket ----------
+let ws = null;
+let reconnectDelay = 1000;
+const maxReconnectDelay = 10000;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}/ws`;
+  ws = new WebSocket(url);
+  ws.onopen = () => {
+    console.log('[player] ws open, joining session', sessionId);
+    ws.send(JSON.stringify({ type: 'join', session_id: sessionId, role: 'player' }));
+    document.getElementById('discOverlay').classList.remove('show');
+    reconnectDelay = 1000;
+    reportPlayerState();
+  };
+  ws.onmessage = (evt) => {
+    let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+    if (msg.type === 'directive') applyDirective(msg.payload || msg);
+    else if (msg.type === 'mode_change') applyModeChange(msg);
+    else if (msg.type === 'joined') console.log('[player] joined, members:', msg.members);
+  };
+  ws.onclose = () => {
+    console.log('[player] ws closed, reconnecting in', reconnectDelay);
+    document.getElementById('discOverlay').classList.add('show');
+    document.getElementById('discDetail').textContent = 'Reconnecting…';
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(maxReconnectDelay, reconnectDelay * 1.5);
+  };
+  ws.onerror = (e) => console.warn('[player] ws error', e.message);
+}
+
+function reportPlayerState() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    type: 'player_state',
+    session_id: sessionId,
+    payload: {
+      actual_hz: targetHz,
+      actual_intensity: Math.round(effectiveIntensity),
+      frame_rate: Math.round(frameRate),
+      audio_running: !!(audioCtx && audioCtx.state === 'running'),
+      state,
+      t: Date.now(),
+    },
+  }));
+}
+setInterval(reportPlayerState, 2000);
+
+// ---------- Kick-off ----------
+// Audio requires user gesture in modern browsers. Show cursor until first click,
+// then hide it and enter focus mode.
+let audioUnlocked = false;
+function userGestureUnlock() {
+  if (!audioUnlocked) {
+    initAudio();
+    audioUnlocked = true;
+    document.body.classList.remove('show-cursor');
+    setTimeout(() => document.body.classList.add('focus-mode'), 4000);
+  }
+}
+window.addEventListener('click', userGestureUnlock);
+window.addEventListener('keydown', userGestureUnlock);
+
+// Show cursor initially so operator can click to unlock
+document.body.classList.add('show-cursor');
+document.getElementById('discDetail').textContent =
+  'Click anywhere to unlock audio and begin.';
+document.getElementById('discOverlay').classList.add('show');
+
+// Move mouse -> briefly show cursor + HUD
+let hideHudTimer = null;
+document.addEventListener('mousemove', () => {
+  document.body.classList.remove('focus-mode');
+  clearTimeout(hideHudTimer);
+  hideHudTimer = setTimeout(() => document.body.classList.add('focus-mode'), 4000);
+});
+
+// Session readout
+document.getElementById('sessionReadout').textContent =
+  sessionId ? '0x' + sessionId.toString(16).padStart(4, '0').toUpperCase() : 'NO SESSION';
+document.getElementById('copilotFill').style.width = copilotShare + '%';
+document.getElementById('copilotAssist').textContent = copilotShare + '% assist';
+document.getElementById('drivingPct').textContent = (100 - copilotShare) + '%';
+document.getElementById('targetBand').textContent = targetBand.toUpperCase();
+document.getElementById('targetFreq').textContent = targetHz.toFixed(1) + ' Hz';
+
+resize();
+connect();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
