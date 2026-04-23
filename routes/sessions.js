@@ -13,7 +13,7 @@ router.post('/sessions', async (req, res) => {
   try {
     const {
       client_id, protocol_id, scheduled_at,
-      coach_staff_id, coach_staff_name, eeg_source,
+      coach_staff_id, coach_staff_name, eeg_source, eeg_device_code,
     } = req.body;
 
     if (!client_id || !protocol_id) {
@@ -36,14 +36,31 @@ router.post('/sessions', async (req, res) => {
       return res.status(400).json({ error: 'client has not signed consent — cannot schedule' });
     }
 
+    // Device code takes precedence; fall back to legacy eeg_source enum for older clients
+    const deviceCode = eeg_device_code || null;
+    const legacyEegSource = deviceCode === 'simulator' ? 'simulator'
+      : deviceCode ? 'bluetooth'
+      : (eeg_source || 'simulator');
+
+    // Verify device exists in registry if one was specified
+    if (deviceCode) {
+      const { rows: d } = await query(
+        `SELECT code FROM wellness_eeg_devices WHERE code = $1 AND active = TRUE`,
+        [deviceCode]
+      );
+      if (!d.length) {
+        return res.status(400).json({ error: `unknown EEG device code: ${deviceCode}` });
+      }
+    }
+
     const { rows } = await query(
       `INSERT INTO wellness_sessions
         (client_id, protocol_id, coach_staff_id, coach_staff_name,
-         scheduled_at, eeg_source, status)
-       VALUES ($1,$2,$3,$4,$5,$6,'scheduled')
+         scheduled_at, eeg_source, eeg_device_code, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'scheduled')
        RETURNING *`,
       [client_id, protocol_id, coach_staff_id || null, coach_staff_name || null,
-       scheduled_at || null, eeg_source || 'simulator']
+       scheduled_at || null, legacyEegSource, deviceCode]
     );
 
     res.json({ ok: true, session: rows[0] });
