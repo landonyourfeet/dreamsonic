@@ -512,6 +512,22 @@
   </div>
 </div>
 
+<!-- Packet-ready modal - appears after finalize, offers print/view/skip -->
+<div class="modal-backdrop" id="packetModal">
+  <div class="modal">
+    <span class="corners"></span>
+    <h2>Session Complete · Take-Home Packet Ready</h2>
+    <p style="color:var(--halo-text-dim);font-size:12px;font-family:var(--mono);letter-spacing:0.3px;line-height:1.7;">
+      A 4-page wellness packet is ready with this session's results, your client's progress to date, a brain-wave field guide, and a practice tailored to their target band. Print it before they leave.
+    </p>
+    <div style="display:flex;gap:10px;margin-top:22px;justify-content:flex-end;flex-wrap:wrap;">
+      <button class="btn" id="btnPacketDone">◂ Skip · Back to Console</button>
+      <button class="btn" id="btnPacketView">◂ View PDF</button>
+      <button class="btn primary" id="btnPacketPrint">▸ Open &amp; Print</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   const sessionId = parseInt(window.location.pathname.match(/\/session\/(\d+)/)[1], 10);
@@ -891,12 +907,32 @@
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       document.getElementById('postModal').classList.remove('open');
-      log('ok', 'Session finalized · returning to console');
+      log('ok', 'Session finalized · packet ready');
       if (eegSource) await eegSource.disconnect();
-      setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
+      showPacketModal();
     } catch (err) {
       log('err', 'Finalize failed · ' + err.message);
     }
+  }
+
+  function showPacketModal() {
+    const el = document.getElementById('packetModal');
+    el.classList.add('open');
+    document.getElementById('btnPacketView').onclick = () => {
+      window.open(`/api/sessions/${sessionId}/packet.pdf`, '_blank');
+    };
+    document.getElementById('btnPacketPrint').onclick = () => {
+      // Opening in a new window then calling print is the most reliable cross-browser path
+      const w = window.open(`/api/sessions/${sessionId}/packet.pdf`, '_blank');
+      if (w) {
+        // Give the PDF viewer a moment to load, then trigger print
+        setTimeout(() => { try { w.print(); } catch (e) {} }, 1200);
+      }
+    };
+    document.getElementById('btnPacketDone').onclick = () => {
+      el.classList.remove('open');
+      window.location.href = '/dashboard';
+    };
   }
 
   // --- Helpers ---
