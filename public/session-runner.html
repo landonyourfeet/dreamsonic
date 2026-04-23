@@ -468,6 +468,7 @@
       <button class="btn" id="btnConnect">◂ Connect Headband</button>
       <button class="btn primary" id="btnStart" disabled>▸ Start Session</button>
       <button class="btn" id="btnNextPhase" disabled>Next Phase ▸</button>
+      <button class="btn" id="btnLaunchPlayer" title="Open the cosmic orb stimulation display on a second monitor">◂ Launch Stimulation Display</button>
     </div>
     <button class="btn danger-emergency" id="btnStop" disabled>⏹ ABORT SEQUENCE</button>
   </div>
@@ -773,6 +774,22 @@
   });
 
   document.getElementById('btnNextPhase').addEventListener('click', advancePhase);
+
+  // Launch Stimulation Display — opens the Orb player in a new window so the
+  // operator can drag it to a second monitor. Window size targets the lower
+  // end of common external display resolutions; operator can maximize.
+  document.getElementById('btnLaunchPlayer').addEventListener('click', () => {
+    const url = `/session/${sessionId}/player`;
+    const features = 'width=1280,height=800,left=100,top=100,resizable=yes,scrollbars=no,location=no,menubar=no,toolbar=no,status=no';
+    const w = window.open(url, `dreamsonic_player_${sessionId}`, features);
+    if (w) {
+      w.focus();
+      log('info', 'STIMULATION DISPLAY · launched · drag to second monitor');
+    } else {
+      log('warn', 'STIMULATION DISPLAY · popup blocked · allow popups for halo.dreamsonic.org');
+      alert('Popup was blocked. Please allow popups for halo.dreamsonic.org and try again.');
+    }
+  });
 
   function startPhase(name, durationMs) {
     phase = name;
