@@ -177,6 +177,35 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_wellness_session_notes_session
      ON wellness_session_notes(session_id)`,
 
+  // Attention Check assessments (CPT-paradigm).
+  // Raw metrics only — never stored as T-scores or clinical likelihood values.
+  // session_id is nullable so clients can take baseline tests outside a session.
+  `CREATE TABLE IF NOT EXISTS wellness_attention_assessments (
+    id                    SERIAL PRIMARY KEY,
+    client_id             INTEGER NOT NULL REFERENCES wellness_clients(id) ON DELETE CASCADE,
+    session_id            INTEGER REFERENCES wellness_sessions(id) ON DELETE SET NULL,
+    variant               TEXT NOT NULL CHECK (variant IN ('letter','shape','color')),
+    started_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at          TIMESTAMPTZ,
+    completed             BOOLEAN NOT NULL DEFAULT FALSE,
+    total_trials          INTEGER,
+    target_trials         INTEGER,
+    non_target_trials     INTEGER,
+    hits                  INTEGER,
+    omissions             INTEGER,
+    commissions           INTEGER,
+    mean_rt_ms            NUMERIC(7,2),
+    rt_stddev_ms          NUMERIC(7,2),
+    rt_coefficient_var    NUMERIC(5,3),
+    accuracy_pct          NUMERIC(5,2),
+    operator_name         TEXT,
+    metadata              JSONB
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_wellness_attention_client
+     ON wellness_attention_assessments(client_id, completed_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_wellness_attention_session
+     ON wellness_attention_assessments(session_id) WHERE session_id IS NOT NULL`,
+
   // Late-added columns — idempotent, safe on every boot.
   // eeg_device_code ties a session to a specific device in the registry.
   // Existing sessions predating this column keep their legacy eeg_source text.
