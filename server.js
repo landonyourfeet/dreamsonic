@@ -62,6 +62,7 @@ const sessions  = require('./routes/sessions');
 const progress  = require('./routes/progress');
 const packet    = require('./routes/packet');
 const attention = require('./routes/attention');
+const devices   = require('./routes/devices');
 
 app.use('/api', apiHostGate, clients);
 app.use('/api', apiHostGate, protocols);
@@ -69,6 +70,7 @@ app.use('/api', apiHostGate, sessions);
 app.use('/api', apiHostGate, progress);
 app.use('/api', apiHostGate, packet);
 app.use('/api', apiHostGate, attention);
+app.use('/api', apiHostGate, devices);
 
 // --- Views + static assets (host-aware) -----------------------------------
 require('./views').mount(app);
