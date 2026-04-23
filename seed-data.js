@@ -4,6 +4,67 @@
 
 const { query } = require('./db');
 
+// EEG device registry seeds.
+// channel_map is ordered to match the device's native channel index.
+// frontal_available gates the analysis engine: devices with frontal channels
+// get true Frontal Alpha Asymmetry; devices without fall back to temporal
+// asymmetry as a proxy.
+const DEFAULT_EEG_DEVICES = [
+  {
+    code: 'simulator',
+    display_name: 'Simulator',
+    vendor: 'DreamSonic',
+    channel_count: 4,
+    channel_map: ['O1', 'O2', 'T3', 'T4'],
+    sample_rate_hz: 250,
+    max_safe_amplitude_uv: 200,
+    frontal_available: false,
+    connection_type: 'simulator',
+    driver_module: 'simulator',
+    notes: 'Synthetic signal for training, demos, and when hardware is unavailable.',
+  },
+  {
+    code: 'brainbit',
+    display_name: 'BrainBit Flex',
+    vendor: 'BrainBit',
+    channel_count: 4,
+    channel_map: ['O1', 'O2', 'T3', 'T4'],
+    sample_rate_hz: 250,
+    max_safe_amplitude_uv: 200,
+    frontal_available: false,
+    connection_type: 'bluetooth',
+    driver_module: 'brainbit',
+    notes: 'Primary production device. Dry electrodes, 4 channels, occipital + temporal montage.',
+  },
+  // Future devices — uncomment when hardware arrives and SDK drivers are wired.
+  // {
+  //   code: 'muse2',
+  //   display_name: 'Muse 2',
+  //   vendor: 'InteraXon',
+  //   channel_count: 4,
+  //   channel_map: ['TP9', 'AF7', 'AF8', 'TP10'],
+  //   sample_rate_hz: 256,
+  //   max_safe_amplitude_uv: 180,
+  //   frontal_available: true,
+  //   connection_type: 'bluetooth',
+  //   driver_module: 'muse',
+  //   notes: 'Has frontal channels — enables true Frontal Alpha Asymmetry analysis.',
+  // },
+  // {
+  //   code: 'openbci_cyton',
+  //   display_name: 'OpenBCI Cyton',
+  //   vendor: 'OpenBCI',
+  //   channel_count: 8,
+  //   channel_map: ['Fp1', 'Fp2', 'C3', 'C4', 'P7', 'P8', 'O1', 'O2'],
+  //   sample_rate_hz: 250,
+  //   max_safe_amplitude_uv: 250,
+  //   frontal_available: true,
+  //   connection_type: 'bluetooth',
+  //   driver_module: 'openbci',
+  //   notes: 'Research-grade 8-channel. Full 10-20 coverage for advanced protocols.',
+  // },
+];
+
 // NOTE: Beta-band (15-25 Hz) photic stimulation carries the highest overlap
 // with photosensitive seizure triggers — the Peak Engagement protocol is
 // audio-only by design.
@@ -100,6 +161,20 @@ const DEFAULT_VOCAB = [
 async function init() {
   console.log('[seed] seeding defaults...');
 
+  for (const d of DEFAULT_EEG_DEVICES) {
+    await query(
+      `INSERT INTO wellness_eeg_devices
+        (code, display_name, vendor, channel_count, channel_map,
+         sample_rate_hz, max_safe_amplitude_uv, frontal_available,
+         connection_type, driver_module, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (code) DO NOTHING`,
+      [d.code, d.display_name, d.vendor, d.channel_count,
+       JSON.stringify(d.channel_map), d.sample_rate_hz, d.max_safe_amplitude_uv,
+       d.frontal_available, d.connection_type, d.driver_module, d.notes]
+    );
+  }
+
   for (const p of DEFAULT_PROTOCOLS) {
     await query(
       `INSERT INTO wellness_protocols
@@ -121,9 +196,10 @@ async function init() {
     );
   }
 
+  const { rows: dc } = await query(`SELECT COUNT(*)::int AS c FROM wellness_eeg_devices`);
   const { rows: pc } = await query(`SELECT COUNT(*)::int AS c FROM wellness_protocols`);
   const { rows: vc } = await query(`SELECT COUNT(*)::int AS c FROM wellness_coach_note_vocab`);
-  console.log(`[seed] ready — ${pc[0].c} protocols, ${vc[0].c} vocab terms`);
+  console.log(`[seed] ready — ${dc[0].c} devices, ${pc[0].c} protocols, ${vc[0].c} vocab terms`);
 }
 
 module.exports = { init };
