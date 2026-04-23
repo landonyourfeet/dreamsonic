@@ -83,8 +83,8 @@ const PORT = process.env.PORT || 3000;
     console.log('[dreamsonic] starting...');
     await require('./schema').init();
     await require('./seed-data').init();
-    app.listen(PORT, () => {
-      console.log(`[dreamsonic] listening on :${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`[dreamsonic] listening on 0.0.0.0:${PORT}`);
       console.log('[dreamsonic] halo console at halo.dreamsonic.org');
       console.log('[dreamsonic] public site at dreamsonic.org');
     });
