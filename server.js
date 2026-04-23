@@ -78,6 +78,8 @@ app.use((err, req, res, next) => {
 });
 
 // --- Boot sequence --------------------------------------------------------
+const http = require('http');
+const wsHub = require('./routes/ws-hub');
 const PORT = process.env.PORT || 3000;
 
 (async () => {
@@ -85,7 +87,11 @@ const PORT = process.env.PORT || 3000;
     console.log('[dreamsonic] starting...');
     await require('./schema').init();
     await require('./seed-data').init();
-    app.listen(PORT, '0.0.0.0', () => {
+
+    const server = http.createServer(app);
+    wsHub.attach(server);
+
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`[dreamsonic] listening on 0.0.0.0:${PORT}`);
       console.log('[dreamsonic] halo console at halo.dreamsonic.org');
       console.log('[dreamsonic] public site at dreamsonic.org');
