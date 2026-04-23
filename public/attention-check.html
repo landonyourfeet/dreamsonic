@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DreamSonic · Attention Check</title>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --ink: #1a1a1a;
+    --ink-dim: #6a6a64;
+    --accent: #2c6179;
+    --accent-soft: #d6e5ed;
+    --line: #e6e3da;
+    --ok: #3d8c54;
+    --warn: #b87333;
+    --cell: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100vw; height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    overflow: hidden;
+  }
+  body.test-mode { background: #fafaf8; cursor: none; }
+
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    padding: 40px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  .screen.active { opacity: 1; pointer-events: auto; }
+
+  .card {
+    background: var(--cell);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 48px 56px;
+    max-width: 640px;
+    width: 100%;
+    text-align: center;
+  }
+  .brand {
+    font-size: 12px; letter-spacing: 4px; color: var(--accent);
+    text-transform: uppercase; margin-bottom: 32px; font-weight: 500;
+  }
+  h1 { font-size: 30px; font-weight: 300; margin-bottom: 16px; letter-spacing: -0.5px; }
+  h2 { font-size: 22px; font-weight: 400; margin-bottom: 20px; }
+  p { font-size: 15px; line-height: 1.7; color: var(--ink); margin-bottom: 14px; }
+  .sub { color: var(--ink-dim); font-size: 13px; line-height: 1.7; }
+
+  .instr-key {
+    background: var(--accent-soft); border: 1px solid #b8d2de;
+    padding: 24px; border-radius: 4px; margin: 24px 0;
+  }
+  .instr-key .label {
+    font-size: 11px; letter-spacing: 2px; color: var(--accent);
+    text-transform: uppercase; margin-bottom: 10px; font-weight: 500;
+  }
+  .instr-key .rule { font-size: 16px; color: var(--ink); line-height: 1.7; }
+  .kbd {
+    display: inline-block; padding: 4px 12px;
+    background: white; border: 1px solid #aabcc5;
+    border-radius: 4px; font-family: 'SF Mono', Consolas, monospace;
+    font-size: 13px; color: var(--accent);
+    box-shadow: 0 1px 0 #aabcc5;
+  }
+
+  button, .btn {
+    padding: 14px 28px; font-size: 14px;
+    border: 1px solid var(--accent); background: var(--accent);
+    color: white; border-radius: 4px; cursor: pointer;
+    letter-spacing: 1px; font-weight: 500;
+    transition: all 0.15s; font-family: inherit;
+  }
+  button:hover { background: #204e63; }
+  button.secondary {
+    background: white; color: var(--accent);
+  }
+  button.secondary:hover { background: var(--accent-soft); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-row { display: flex; gap: 12px; justify-content: center; margin-top: 24px; }
+
+  /* Test arena */
+  #arena {
+    background: #fafaf8;
+  }
+  .stimulus {
+    font-size: 180px; font-weight: 300;
+    color: var(--ink); line-height: 1;
+    opacity: 0;
+    transition: opacity 0.08s ease;
+    user-select: none;
+  }
+  .stimulus.show { opacity: 1; }
+  .stimulus.shape {
+    width: 160px; height: 160px;
+    display: inline-block;
+  }
+  .stimulus.color {
+    width: 180px; height: 180px;
+    border-radius: 50%;
+  }
+
+  .progress-bar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 3px; background: var(--line);
+  }
+  .progress-bar .fill {
+    height: 100%; background: var(--accent);
+    width: 0%;
+    transition: width 0.6s linear;
+  }
+  .progress-label {
+    position: absolute; top: 14px; right: 24px;
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 11px; color: var(--ink-dim); letter-spacing: 1px;
+  }
+
+  .hint {
+    position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--ink-dim); letter-spacing: 2px;
+    text-transform: uppercase; opacity: 0.55;
+  }
+
+  /* Results */
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px; margin: 28px 0;
+  }
+  .metric {
+    padding: 20px;
+    background: #fafaf7;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    text-align: left;
+  }
+  .metric .label {
+    font-size: 11px; letter-spacing: 2px; color: var(--ink-dim);
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .metric .value {
+    font-size: 28px; font-weight: 300; color: var(--accent);
+  }
+  .metric .unit {
+    font-size: 13px; color: var(--ink-dim); margin-left: 6px;
+  }
+
+  .countdown {
+    font-size: 88px; font-weight: 300;
+    color: var(--accent); font-family: 'SF Mono', Consolas, monospace;
+    line-height: 1;
+  }
+
+  .variant-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 11px; letter-spacing: 2px;
+    text-transform: uppercase; border-radius: 20px;
+    margin-bottom: 20px; font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<div class="screen active" id="screen-loading">
+  <div class="card">
+    <div class="brand">DreamSonic</div>
+    <h1>Loading your Attention Check…</h1>
+    <p class="sub">A moment to prepare.</p>
+  </div>
+</div>
+
+<div class="screen" id="screen-intro">
+  <div class="card">
+    <div class="brand">DreamSonic</div>
+    <div class="variant-badge" id="variant-badge">—</div>
+    <h1>Attention Check</h1>
+    <p>This is an 8-minute attention exercise. You'll see a series of items flash briefly on the screen.</p>
+    <div class="instr-key">
+      <div class="label">Your Task</div>
+      <div class="rule" id="instruction-text">—</div>
+    </div>
+    <p>We'll start with a short practice round so you can get comfortable. Your real results don't start counting until the practice is over.</p>
+    <p class="sub">Try to respond quickly and accurately. If you miss one, keep going — just focus on the next item.</p>
+    <div class="btn-row">
+      <button class="secondary" onclick="cancel()">Cancel</button>
+      <button onclick="startPractice()">Begin Practice ▸</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="screen-countdown">
+  <div class="card">
+    <div class="sub" style="margin-bottom: 20px;">Get ready…</div>
+    <div class="countdown" id="countdown-num">3</div>
+  </div>
+</div>
+
+<div class="screen" id="screen-arena">
+  <div class="progress-bar"><div class="fill" id="progress-fill"></div></div>
+  <div class="progress-label" id="progress-label">— / —</div>
+  <div class="stimulus" id="stimulus"></div>
+  <div class="hint">press spacebar for targets · stay still · breathe</div>
+</div>
+
+<div class="screen" id="screen-practice-done">
+  <div class="card">
+    <div class="brand">DreamSonic</div>
+    <h1>Practice complete.</h1>
+    <p>Now the real Attention Check begins. It will take about 8 minutes. Stay focused — it's okay to blink and breathe naturally, just try not to look away.</p>
+    <p class="sub">Remember — press SPACE for every item <em>except</em> <span id="practice-done-nontarget"></span>.</p>
+    <div class="btn-row">
+      <button onclick="startRealTest()">Start Attention Check ▸</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="screen-results">
+  <div class="card">
+    <div class="brand">DreamSonic</div>
+    <h1>Attention Check complete.</h1>
+    <p class="sub">Your raw metrics are below. These are for longitudinal tracking — we'll compare them to your future checks to see how you're growing.</p>
+    <div class="results-grid" id="results-grid"></div>
+    <p class="sub" style="margin-top: 20px;">
+      Saved to your record. You can view the full trend in your progress portal after your session.
+    </p>
+    <div class="btn-row">
+      <button onclick="window.close()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="screen-error">
+  <div class="card">
+    <div class="brand">DreamSonic</div>
+    <h1>Something went wrong.</h1>
+    <p id="error-message" class="sub">—</p>
+    <div class="btn-row">
+      <button onclick="window.location.reload()">Try Again</button>
+      <button class="secondary" onclick="window.close()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// URL params: ?client=ID&session=ID(optional)&operator=NAME(optional)
+const params = new URLSearchParams(location.search);
+const clientId = parseInt(params.get('client'), 10);
+const sessionId = params.get('session') ? parseInt(params.get('session'), 10) : null;
+const operatorName = params.get('operator') || null;
+
+let assessment = null;
+let practiceTrials = [];
+let realTrials = [];
+let responses = [];
+let currentTrialIdx = 0;
+let trialStartTime = 0;
+let responseReceived = false;
+let isi_timeout = null;
+let stim_timeout = null;
+let inPractice = false;
+let keyListener = null;
+
+// ---------- Screen transitions ----------
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ---------- Error handling ----------
+function showError(msg) {
+  document.getElementById('error-message').textContent = msg;
+  showScreen('screen-error');
+  document.body.classList.remove('test-mode');
+}
+
+function cancel() {
+  if (window.opener) window.close();
+  else window.location.href = '/dashboard';
+}
+
+// ---------- Init ----------
+async function init() {
+  if (!clientId) {
+    return showError('No client ID provided. Launch this test from the session runner.');
+  }
+  try {
+    const r = await fetch('/api/attention/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        session_id: sessionId,
+        operator_name: operatorName,
+      }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ error: r.statusText }));
+      throw new Error(err.error || 'failed to start');
+    }
+    assessment = await r.json();
+    practiceTrials = assessment.practice_trials;
+    realTrials = assessment.trials;
+
+    document.getElementById('variant-badge').textContent = assessment.variant_name + ' Variant';
+    document.getElementById('instruction-text').innerHTML =
+      assessment.instruction.replace('SPACE', '<span class="kbd">SPACE</span>');
+    document.getElementById('practice-done-nontarget').textContent = assessment.non_target;
+
+    showScreen('screen-intro');
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+// ---------- Countdown ----------
+async function runCountdown() {
+  showScreen('screen-countdown');
+  for (let n = 3; n >= 1; n--) {
+    document.getElementById('countdown-num').textContent = n;
+    await sleep(900);
+  }
+  document.getElementById('countdown-num').textContent = '•';
+  await sleep(400);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ---------- Practice ----------
+async function startPractice() {
+  inPractice = true;
+  currentTrialIdx = 0;
+  responses = [];
+  await runCountdown();
+  document.body.classList.add('test-mode');
+  showScreen('screen-arena');
+  attachKeyListener();
+  updateProgress();
+  runNextTrial();
+}
+
+// ---------- Real test ----------
+async function startRealTest() {
+  inPractice = false;
+  currentTrialIdx = 0;
+  responses = [];
+  await runCountdown();
+  document.body.classList.add('test-mode');
+  showScreen('screen-arena');
+  attachKeyListener();
+  updateProgress();
+  runNextTrial();
+}
+
+// ---------- Trial runner ----------
+function runNextTrial() {
+  const trials = inPractice ? practiceTrials : realTrials;
+
+  if (currentTrialIdx >= trials.length) {
+    finishBlock();
+    return;
+  }
+
+  const trial = trials[currentTrialIdx];
+  const stim = document.getElementById('stimulus');
+  responseReceived = false;
+
+  // Render the stimulus according to variant
+  renderStimulus(stim, trial);
+
+  // Show
+  trialStartTime = performance.now();
+  stim.classList.add('show');
+
+  // Hide stimulus after STIMULUS_DURATION_MS
+  stim_timeout = setTimeout(() => {
+    stim.classList.remove('show');
+  }, 250);
+
+  // End trial after ISI elapsed from stimulus onset
+  isi_timeout = setTimeout(() => {
+    if (!responseReceived) {
+      // Record no-response
+      if (!inPractice) {
+        responses[currentTrialIdx] = { pressed: false, reaction_time_ms: null };
+      }
+    }
+    currentTrialIdx++;
+    updateProgress();
+    runNextTrial();
+  }, trial.isi_ms);
+}
+
+function renderStimulus(el, trial) {
+  el.className = 'stimulus';
+  const variant = assessment.variant;
+  if (variant === 'letter') {
+    el.textContent = trial.stimulus;
+    el.style.background = '';
+    el.style.width = '';
+    el.style.height = '';
+  } else if (variant === 'shape') {
+    el.textContent = '';
+    el.classList.add('shape');
+    el.style.background = '#2c6179';
+    el.style.width = '160px';
+    el.style.height = '160px';
+    el.style.clipPath = shapeClipPath(trial.stimulus);
+  } else if (variant === 'color') {
+    el.textContent = '';
+    el.classList.add('color');
+    el.style.background = colorValue(trial.stimulus);
+    el.style.clipPath = '';
+  }
+}
+
+function shapeClipPath(shape) {
+  switch (shape) {
+    case 'square':    return 'polygon(0 0, 100% 0, 100% 100%, 0 100%)';
+    case 'triangle':  return 'polygon(50% 0, 100% 100%, 0 100%)';
+    case 'diamond':   return 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)';
+    case 'pentagon':  return 'polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%)';
+    case 'hexagon':   return 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)';
+    case 'star':      return 'polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
+    case 'circle':    return 'circle(50%)';
+    default:          return 'polygon(0 0, 100% 0, 100% 100%, 0 100%)';
+  }
+}
+
+function colorValue(name) {
+  return {
+    red:    '#d04a4a',
+    blue:   '#2c6179',
+    green:  '#3d8c54',
+    purple: '#6b47a8',
+    teal:   '#1d7a7a',
+    amber:  '#b87333',
+    cyan:   '#2d9cdb',
+    white:  '#ffffff',
+  }[name] || '#888';
+}
+
+// ---------- Input handling ----------
+function attachKeyListener() {
+  detachKeyListener();
+  keyListener = (ev) => {
+    if (ev.code === 'Space' || ev.key === ' ') {
+      ev.preventDefault();
+      if (responseReceived) return;
+      responseReceived = true;
+      const rt = performance.now() - trialStartTime;
+      if (!inPractice) {
+        responses[currentTrialIdx] = { pressed: true, reaction_time_ms: Math.round(rt) };
+      }
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      if (confirm('Stop the Attention Check? Your progress so far will not be saved.')) {
+        cancel();
+      }
+    }
+  };
+  window.addEventListener('keydown', keyListener);
+}
+
+function detachKeyListener() {
+  if (keyListener) {
+    window.removeEventListener('keydown', keyListener);
+    keyListener = null;
+  }
+}
+
+// ---------- Progress UI ----------
+function updateProgress() {
+  const trials = inPractice ? practiceTrials : realTrials;
+  const label = inPractice ? 'PRACTICE' : 'ATTENTION CHECK';
+  document.getElementById('progress-label').textContent =
+    `${label} · ${currentTrialIdx} / ${trials.length}`;
+  const pct = (currentTrialIdx / trials.length) * 100;
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+
+// ---------- Block completion ----------
+function finishBlock() {
+  detachKeyListener();
+  clearTimeout(isi_timeout);
+  clearTimeout(stim_timeout);
+  document.body.classList.remove('test-mode');
+
+  if (inPractice) {
+    showScreen('screen-practice-done');
+  } else {
+    submitResults();
+  }
+}
+
+// ---------- Submit + Results ----------
+async function submitResults() {
+  try {
+    // Fill in any missing response slots
+    for (let i = 0; i < realTrials.length; i++) {
+      if (!responses[i]) responses[i] = { pressed: false, reaction_time_ms: null };
+    }
+    const r = await fetch(`/api/attention/${assessment.assessment_id}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ responses }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ error: r.statusText }));
+      throw new Error(err.error || 'submission failed');
+    }
+    const data = await r.json();
+    showResults(data.results);
+  } catch (err) {
+    showError('Results did not save: ' + err.message);
+  }
+}
+
+function showResults(res) {
+  const grid = document.getElementById('results-grid');
+  grid.innerHTML = `
+    <div class="metric">
+      <div class="label">Reaction Time</div>
+      <div class="value">${res.mean_rt_ms != null ? res.mean_rt_ms : '—'}<span class="unit">ms</span></div>
+    </div>
+    <div class="metric">
+      <div class="label">Variability</div>
+      <div class="value">${res.rt_stddev_ms != null ? res.rt_stddev_ms : '—'}<span class="unit">ms</span></div>
+    </div>
+    <div class="metric">
+      <div class="label">Missed Targets</div>
+      <div class="value">${res.omissions}<span class="unit">/ ${res.target_trials}</span></div>
+    </div>
+    <div class="metric">
+      <div class="label">False Presses</div>
+      <div class="value">${res.commissions}<span class="unit">/ ${res.non_target_trials}</span></div>
+    </div>
+    <div class="metric" style="grid-column: 1 / -1;">
+      <div class="label">Overall Accuracy</div>
+      <div class="value">${res.accuracy_pct.toFixed(1)}<span class="unit">%</span></div>
+    </div>
+  `;
+  showScreen('screen-results');
+  // Attempt to notify opener (runner) so it can refresh its CPT panel
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({
+        type: 'attention_check_complete',
+        assessment_id: assessment.assessment_id,
+        client_id: clientId,
+        results: res,
+      }, '*');
+    }
+  } catch (e) { /* ignore */ }
+}
+
+init();
+</script>
+</body>
+</html>
