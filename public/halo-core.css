@@ -1,0 +1,373 @@
+/* ============================================================
+   HALO CORE · PROJECT HALO AESTHETIC
+   Electric-cyan HUD on void-blue. Shared across all staff pages.
+   ============================================================ */
+
+:root {
+  --halo-void:       #02050a;
+  --halo-deep:       #050b16;
+  --halo-panel:      #0a1220;
+  --halo-panel-2:    #0e1828;
+  --halo-line:       #16304f;
+  --halo-line-hot:   #2d5584;
+  --halo-text:       #d6e8ff;
+  --halo-text-dim:   #6d8bae;
+  --halo-text-faint: #3a5678;
+  --halo-cyan:       #00d4ff;
+  --halo-cyan-deep:  #007aa3;
+  --halo-amber:      #ffaa00;
+  --halo-red:        #ff3050;
+  --halo-green:      #00ff88;
+  --halo-purple:     #aa66ff;
+  --mono:  'JetBrains Mono', 'SF Mono', Consolas, Menlo, monospace;
+  --sans:  -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--halo-void);
+  color: var(--halo-text);
+  font-family: var(--sans);
+  font-size: 13px;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Grid background (subtle) */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(to right,  rgba(45,85,132,0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(45,85,132,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scanline overlay (optional, class-opted) */
+.scanlines::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 212, 255, 0) 0px,
+    rgba(0, 212, 255, 0) 2px,
+    rgba(0, 212, 255, 0.015) 3px,
+    rgba(0, 212, 255, 0) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ============================================================
+   CLASSIFICATION BAR + CONSOLE HEADER
+   ============================================================ */
+
+.classification {
+  position: relative; z-index: 2;
+  background: var(--halo-deep);
+  border-bottom: 1px solid var(--halo-line);
+  padding: 5px 24px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  color: var(--halo-cyan);
+  text-transform: uppercase;
+}
+.classification .dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  background: var(--halo-cyan);
+  border-radius: 50%;
+  margin-right: 8px;
+  box-shadow: 0 0 8px var(--halo-cyan);
+  animation: halo-pulse 2s ease-in-out infinite;
+}
+.classification .meta { color: var(--halo-text-faint); letter-spacing: 2px; }
+
+@keyframes halo-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes halo-flicker { 0%, 97%, 100% { opacity: 1; } 98% { opacity: 0.6; } 99% { opacity: 1; } }
+
+.console-header {
+  position: relative; z-index: 2;
+  background: var(--halo-deep);
+  border-bottom: 1px solid var(--halo-line);
+  padding: 16px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px;
+}
+.halo-brand {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 5px;
+  color: var(--halo-cyan);
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
+}
+.halo-brand .slash {
+  color: var(--halo-line-hot);
+  margin: 0 14px;
+  letter-spacing: 0;
+  text-shadow: none;
+}
+.halo-brand .sub {
+  color: var(--halo-text-dim);
+  font-weight: 400;
+  font-size: 12px;
+  letter-spacing: 3px;
+  text-shadow: none;
+}
+
+.op-status {
+  display: flex; gap: 16px; align-items: center;
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--halo-text-faint);
+}
+.op-status .v { color: var(--halo-cyan); margin-left: 6px; }
+
+/* ============================================================
+   HALO PANEL (hp) — panel with four corner brackets
+   ============================================================ */
+
+.hp {
+  position: relative; z-index: 1;
+  background: var(--halo-panel);
+  border: 1px solid var(--halo-line);
+  padding: 20px;
+}
+
+/* Four corner brackets using pseudo-elements + inner .corners span */
+.hp::before, .hp::after {
+  content: ''; position: absolute;
+  width: 10px; height: 10px;
+  border: 0 solid var(--halo-cyan);
+  pointer-events: none;
+}
+.hp::before { top: -1px; left: -1px;  border-top-width: 1px; border-left-width: 1px; }
+.hp::after  { top: -1px; right: -1px; border-top-width: 1px; border-right-width: 1px; }
+.hp > .corners { position: absolute; inset: 0; pointer-events: none; }
+.hp > .corners::before, .hp > .corners::after {
+  content: ''; position: absolute;
+  width: 10px; height: 10px;
+  border: 0 solid var(--halo-cyan);
+}
+.hp > .corners::before { bottom: -1px; left: -1px;  border-bottom-width: 1px; border-left-width: 1px; }
+.hp > .corners::after  { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
+
+.hp-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  color: var(--halo-cyan);
+  text-transform: uppercase;
+  margin: 0 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--halo-line);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.hp-title .meta {
+  color: var(--halo-text-faint);
+  font-weight: 400;
+  letter-spacing: 1.5px;
+  font-size: 9px;
+}
+
+/* ============================================================
+   DATA COMPONENTS
+   ============================================================ */
+
+/* Key-value row */
+.kv {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 5px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed rgba(22, 48, 79, 0.4);
+}
+.kv:last-child { border-bottom: none; }
+.kv .k {
+  font-family: var(--mono);
+  font-size: 10px; letter-spacing: 1.5px;
+  color: var(--halo-text-faint);
+  text-transform: uppercase;
+}
+.kv .v {
+  font-family: var(--mono);
+  color: var(--halo-cyan);
+}
+
+/* Status pill */
+.pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  padding: 3px 10px;
+  border: 1px solid;
+  text-transform: uppercase;
+  display: inline-block;
+}
+.pill.ok   { color: var(--halo-green); border-color: var(--halo-green); }
+.pill.warn { color: var(--halo-amber); border-color: var(--halo-amber); }
+.pill.err  { color: var(--halo-red);   border-color: var(--halo-red); }
+.pill.idle { color: var(--halo-text-faint); border-color: var(--halo-text-faint); }
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+
+.btn {
+  position: relative;
+  padding: 10px 18px;
+  background: transparent;
+  border: 1px solid var(--halo-line);
+  color: var(--halo-text);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: all 0.15s ease;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--halo-cyan);
+  color: var(--halo-cyan);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.3),
+              inset 0 0 12px rgba(0, 212, 255, 0.05);
+}
+.btn.primary {
+  background: rgba(0, 212, 255, 0.10);
+  color: var(--halo-cyan);
+  border-color: var(--halo-cyan);
+  text-shadow: 0 0 6px rgba(0, 212, 255, 0.5);
+}
+.btn.primary:hover:not(:disabled) {
+  background: rgba(0, 212, 255, 0.2);
+  box-shadow: 0 0 18px rgba(0, 212, 255, 0.4);
+}
+.btn.danger {
+  background: rgba(255, 48, 80, 0.12);
+  color: var(--halo-red);
+  border-color: var(--halo-red);
+  font-weight: 600;
+  text-shadow: 0 0 6px rgba(255, 48, 80, 0.4);
+}
+.btn.danger:hover:not(:disabled) {
+  background: rgba(255, 48, 80, 0.22);
+  box-shadow: 0 0 18px rgba(255, 48, 80, 0.5);
+}
+.btn.danger-emergency {
+  padding: 14px 32px;
+  font-size: 13px;
+  letter-spacing: 3px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 48, 80, 0.15) 0px,
+    rgba(255, 48, 80, 0.15) 8px,
+    rgba(0, 0, 0, 0) 8px,
+    rgba(0, 0, 0, 0) 16px
+  );
+  border: 1px solid var(--halo-red);
+  color: var(--halo-red);
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(255, 48, 80, 0.6);
+}
+.btn.danger-emergency:hover:not(:disabled) {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 48, 80, 0.3) 0px,
+    rgba(255, 48, 80, 0.3) 8px,
+    rgba(0, 0, 0, 0) 8px,
+    rgba(0, 0, 0, 0) 16px
+  );
+  box-shadow: 0 0 24px rgba(255, 48, 80, 0.6);
+}
+.btn.small { padding: 6px 12px; font-size: 10px; letter-spacing: 1.5px; }
+.btn:disabled { opacity: 0.25; cursor: not-allowed; }
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(22, 48, 79, 0.4);
+}
+th {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--halo-text-faint);
+  text-transform: uppercase;
+  font-weight: normal;
+  border-bottom: 1px solid var(--halo-line);
+  background: rgba(14, 24, 40, 0.4);
+}
+td {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--halo-text);
+}
+td a { color: var(--halo-cyan); text-decoration: none; }
+td a:hover { text-shadow: 0 0 8px rgba(0, 212, 255, 0.7); }
+tr:hover td { background: rgba(0, 212, 255, 0.03); }
+
+/* ============================================================
+   FORM INPUTS
+   ============================================================ */
+
+input[type=text], input[type=email], input[type=tel],
+input[type=number], input[type=datetime-local],
+select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--halo-void);
+  border: 1px solid var(--halo-line);
+  color: var(--halo-text);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  transition: all 0.15s;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--halo-cyan);
+  box-shadow: 0 0 0 1px var(--halo-cyan), 0 0 14px rgba(0, 212, 255, 0.2);
+}
+label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--halo-text-faint);
+  text-transform: uppercase;
+  margin: 14px 0 6px;
+}
+
+/* ============================================================
+   ALERTS
+   ============================================================ */
+
+.alert {
+  padding: 12px 14px;
+  margin: 12px 0;
+  font-size: 12px;
+  font-family: var(--mono);
+  letter-spacing: 0.3px;
+  border: 1px solid;
+}
+.alert.err  { background: rgba(255, 48, 80, 0.06);  border-color: var(--halo-red);   color: #ff8899; }
+.alert.warn { background: rgba(255, 170, 0, 0.06);  border-color: var(--halo-amber); color: #ffd280; }
+.alert.ok   { background: rgba(0, 255, 136, 0.05);  border-color: var(--halo-green); color: #7fffc0; }
+
+a { color: var(--halo-cyan); text-decoration: none; }
+a:hover { text-shadow: 0 0 8px rgba(0, 212, 255, 0.6); }
