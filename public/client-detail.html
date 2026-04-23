@@ -297,7 +297,7 @@ function renderClient() {
   document.getElementById('avatarBig').textContent = initials;
   document.getElementById('subjectName').textContent = `${c.first_name} ${c.last_name_initial}.`;
   document.getElementById('subjectIdRow').textContent =
-    `ID · ${c.client_external_id.substr(0,8)}`;
+    `ID · ${(c.external_id || '').substring(0, 8) || 'unknown'}`;
 
   document.getElementById('fFirst').textContent   = c.first_name;
   document.getElementById('fLast').textContent    = c.last_name_initial;
