@@ -469,6 +469,7 @@
       <button class="btn primary" id="btnStart" disabled>▸ Start Session</button>
       <button class="btn" id="btnNextPhase" disabled>Next Phase ▸</button>
       <button class="btn" id="btnLaunchPlayer" title="Open the cosmic orb stimulation display on a second monitor">◂ Launch Stimulation Display</button>
+      <button class="btn" id="btnLaunchCockpit" title="Open the pilot cockpit with joystick + verbal cue buttons">◂ Launch Pilot Cockpit</button>
     </div>
     <button class="btn danger-emergency" id="btnStop" disabled>⏹ ABORT SEQUENCE</button>
   </div>
@@ -787,6 +788,22 @@
       log('info', 'STIMULATION DISPLAY · launched · drag to second monitor');
     } else {
       log('warn', 'STIMULATION DISPLAY · popup blocked · allow popups for halo.dreamsonic.org');
+      alert('Popup was blocked. Please allow popups for halo.dreamsonic.org and try again.');
+    }
+  });
+
+  // Launch Pilot Cockpit — opens the operator joystick + verbal cue panel in a
+  // narrow tall window. Operator typically keeps this on their primary monitor
+  // while the Orb player fills a second monitor facing the client.
+  document.getElementById('btnLaunchCockpit').addEventListener('click', () => {
+    const url = `/session/${sessionId}/cockpit`;
+    const features = 'width=420,height=860,left=1400,top=80,resizable=yes,scrollbars=yes,location=no,menubar=no,toolbar=no,status=no';
+    const w = window.open(url, `dreamsonic_cockpit_${sessionId}`, features);
+    if (w) {
+      w.focus();
+      log('info', 'PILOT COCKPIT · launched · joystick + verbal cues ready');
+    } else {
+      log('warn', 'PILOT COCKPIT · popup blocked · allow popups for halo.dreamsonic.org');
       alert('Popup was blocked. Please allow popups for halo.dreamsonic.org and try again.');
     }
   });
