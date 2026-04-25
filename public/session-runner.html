@@ -1839,6 +1839,23 @@
       log('warn', 'Directive send failed · ' + e.message);
     }
   }
+
+  // Heartbeat - every 5 seconds, send a no-op keepalive directive so the
+  // player knows we're still alive. Without this, baseline/cooldown phases
+  // (which don't send autopilot ticks) would silently fade the player out.
+  // The directive carries no new instructions; it's just "still here".
+  setInterval(() => {
+    if (!session) return;
+    if (!controllerWs || controllerWs.readyState !== WebSocket.OPEN) return;
+    sendDirective({
+      heartbeat: true,
+      // Re-send the most recent state so any missed updates resync
+      frequencyHz: autopilotOrbHz != null ? autopilotOrbHz
+                                          : Number(session.target_frequency_hz),
+      target_band: session.target_band,
+    });
+  }, 5000);
+
   // Connect once at boot so the player picks up directives whenever
   // we have something to send. Wrap in a setTimeout to let the page
   // finish initial render before opening sockets.
