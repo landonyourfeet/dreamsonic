@@ -1420,6 +1420,13 @@
       loadPersonalizedParams();
       logMMEvent('session_started', null, null, Number(session.target_frequency_hz), 'no-lock',
         { protocol_code: session.protocol_code, duration_minutes: session.duration_minutes });
+
+      // Bring the ambient pad up to subtle background level. The pad's root
+      // note is set on player init based on the session's target_band, so
+      // it harmonically reinforces the protocol without aligning to the
+      // entrainment frequency. Stays low during stimulus (0.15) and peaks
+      // during the post-session reveal moment (1.0).
+      sendDirective({ ambient_level: 0.15, target_band: session.target_band });
     } catch (err) {
       log('err', 'Start failed · ' + err.message);
     }
@@ -1808,6 +1815,26 @@
         });
         log('ok', 'Player connected · initial directive sent · ' + hz + 'Hz');
       }
+      // Cockpit can request the reveal moment manually via control message.
+      // Runner is the source of truth for session data, so it builds the
+      // full reveal payload and sends the directive to the player.
+      if (msg.type === 'control' && msg.payload && msg.payload.command === 'reveal_request') {
+        log('ok', 'REVEAL · cockpit-triggered · building data');
+        (async () => {
+          const revealData = await buildRevealData();
+          sendDirective({
+            reveal_start: true,
+            reveal_data: revealData,
+            ambient_level: 1.0,
+          });
+          log('ok', 'REVEAL · sent to player');
+          // Auto-end after 94s so ambient settles back
+          setTimeout(() => {
+            sendDirective({ reveal_end: true, ambient_level: 0.15 });
+            log('ok', 'REVEAL · complete');
+          }, 94000);
+        })();
+      }
     };
     controllerWs.onclose = (e) => {
       controllerConnected = false;
@@ -2016,11 +2043,118 @@
       }
 
       document.getElementById('postModal').classList.remove('open');
-      log('ok', 'Session finalized · packet ready');
-      if (eegSource) await eegSource.disconnect();
-      showPacketModal();
+      log('ok', 'Session finalized · entering reveal');
+
+      // Trigger the reveal experience on the player. Builds the summary
+      // payload from session data + computes the headline statistic.
+      // The packet modal is delayed until after the 90-second reveal so
+      // the client can absorb the moment uninterrupted.
+      const revealData = await buildRevealData();
+      sendDirective({
+        reveal_start: true,
+        reveal_data: revealData,
+        ambient_level: 1.0,           // pad swells to peak during reveal
+      });
+      log('ok', 'REVEAL · sent to player · ambient pad peaked');
+
+      // Wait for the reveal to play (90s + 4s fade-out grace) then
+      // bring ambient pad back down and show the packet modal.
+      setTimeout(() => {
+        sendDirective({ reveal_end: true, ambient_level: 0.15 });
+        log('ok', 'REVEAL · complete · packet modal opening');
+        if (eegSource) eegSource.disconnect();
+        showPacketModal();
+      }, 94000);
     } catch (err) {
       log('err', 'Finalize failed · ' + err.message);
+    }
+  }
+
+  // Computes the reveal data payload from the latest session record.
+  // Reads baseline + final band averages, computes the headline stat,
+  // pulls the scripture for the target band.
+  async function buildRevealData() {
+    try {
+      const r = await fetch(`/api/sessions/${sessionId}`);
+      const data = await r.json();
+      const s = data.session || {};
+      const targetBand = s.target_band || 'alpha';
+
+      // Baseline + final brain Hz from autopilot's recorded values
+      const baselineHz = Number(s.baseline_brain_hz) || autopilotOrbHz || 10;
+      const finalHz = currentBrainHzFromMM() || autopilotOrbHz || baselineHz;
+      const computedTarget = Number(s.computed_target_hz) || Number(s.target_frequency_hz) || finalHz;
+
+      // Compute the headline. Pulls the % shift in the target band from
+      // baseline phase to stimulus phase, OR the brain's frequency journey,
+      // OR the subjective improvement, whichever produced the strongest
+      // measurable change.
+      const baseBand = Number(s[`baseline_${targetBand}`]) || 0;
+      const stimBand = Number(s[`stimulus_${targetBand}`]) || baseBand;
+      const bandPctChange = baseBand > 0
+        ? Math.round(((stimBand - baseBand) / baseBand) * 100)
+        : 0;
+      const hzShift = Math.abs(finalHz - baselineHz);
+
+      let headline, headlineSub;
+      if (Math.abs(bandPctChange) >= 15) {
+        const direction = bandPctChange > 0 ? 'increased' : 'decreased';
+        headline = `Your ${targetBand} ${direction} ${Math.abs(bandPctChange)}%`;
+        headlineSub = 'measurable shift across the session';
+      } else if (hzShift >= 0.8) {
+        const direction = finalHz > baselineHz ? 'climbed' : 'eased';
+        headline = `Your brain ${direction} ${hzShift.toFixed(1)} Hz`;
+        headlineSub = `from ${baselineHz.toFixed(1)} to ${finalHz.toFixed(1)} Hz`;
+      } else {
+        // Lock-quality based fallback
+        headline = 'Your brain found the rhythm';
+        headlineSub = 'rest is part of the work';
+      }
+
+      // Scripture by target band (matches packet generator's verse mapping)
+      const SCRIPTURES = {
+        delta: { text: 'It is in vain that you rise up early and go late to rest, eating the bread of anxious toil; for he gives to his beloved sleep.', ref: 'Psalm 127:2' },
+        theta: { text: 'Whatever is true, whatever is honorable, whatever is just, whatever is pure, whatever is lovely, whatever is commendable, if there is any excellence, if there is anything worthy of praise, think about these things.', ref: 'Philippians 4:8' },
+        alpha: { text: 'Do not be anxious about anything, but in everything by prayer and supplication with thanksgiving let your requests be made known to God.', ref: 'Philippians 4:6-7' },
+        smr:   { text: 'Let your eyes look directly forward, and your gaze be straight before you.', ref: 'Proverbs 4:25' },
+        beta:  { text: 'Whatever you do, work heartily, as for the Lord and not for men.', ref: 'Colossians 3:23' },
+        gamma: { text: 'If any of you lacks wisdom, let him ask God, who gives generously to all without reproach, and it will be given him.', ref: 'James 1:5' },
+      };
+      const script = SCRIPTURES[targetBand] || SCRIPTURES.alpha;
+
+      return {
+        baseline_brain_hz: baselineHz,
+        final_brain_hz: finalHz,
+        computed_target_hz: computedTarget,
+        target_band: targetBand,
+        pre_stress: Number(s.pre_stress) || 0,
+        post_stress: Number(s.post_stress) || 0,
+        pre_focus: Number(s.pre_focus) || 0,
+        post_focus: Number(s.post_focus) || 0,
+        pre_mood: Number(s.pre_mood) || 0,
+        post_mood: Number(s.post_mood) || 0,
+        headline,
+        headline_sub: headlineSub,
+        scripture: script.text,
+        scripture_ref: script.ref,
+        closing_line: 'Your next session is ready when you are.',
+      };
+    } catch (err) {
+      console.warn('[reveal] data build failed:', err);
+      return {
+        baseline_brain_hz: 10,
+        final_brain_hz: 10,
+        computed_target_hz: 10,
+        target_band: 'alpha',
+        pre_stress: 5, post_stress: 5,
+        pre_focus: 5, post_focus: 5,
+        pre_mood: 5, post_mood: 5,
+        headline: 'Your session is complete',
+        headline_sub: '',
+        scripture: 'Be still, and know that I am God.',
+        scripture_ref: 'Psalm 46:10',
+        closing_line: 'Your next session is ready when you are.',
+      };
     }
   }
 
