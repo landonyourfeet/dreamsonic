@@ -452,6 +452,10 @@
       <span class="journey-state" id="journeyState">JOURNEY · OFF</span>
       <span class="journey-hint">click to fade in feedback ribbons</span>
     </button>
+    <button class="journey-toggle" id="revealBtn" type="button" style="margin-top: 8px;">
+      <span class="journey-state" id="revealState">▸ ENTER REVEAL</span>
+      <span class="journey-hint">90s reveal moment · ambient pad swells</span>
+    </button>
   </div>
 
   <div class="abort-wrap">
@@ -765,6 +769,38 @@ $('journeyToggle').addEventListener('click', () => {
       metadata: { enabled: journeyEnabled, at_freq: currentFreq },
     }),
   }).catch(() => {});
+});
+
+// ============================================================================
+// REVEAL TRIGGER (manual override from cockpit)
+// ----------------------------------------------------------------------------
+// The runner normally triggers the reveal automatically when the post-session
+// modal is submitted. This button lets the operator force-trigger it earlier,
+// or replay it. We post a session event 'reveal_trigger_request' that the
+// runner watches for and responds to by sending the reveal_start directive
+// with the full computed payload.
+// ============================================================================
+$('revealBtn').addEventListener('click', () => {
+  if (!confirm('Trigger the post-session reveal moment now?\n\nThis will swell the ambient pad and play the 90s reveal animation on the player.')) {
+    return;
+  }
+  // Send a control message via WebSocket so the runner picks it up live
+  // and responds with the full reveal_start directive (with computed data).
+  sendWS({
+    type: 'control',
+    payload: { command: 'reveal_request', source: 'cockpit', at_freq: currentFreq },
+  });
+  // Also log to session timeline for audit
+  fetch(`/api/sessions/${sessionId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event_type: 'reveal_trigger_request',
+      metadata: { triggered_from: 'cockpit', at_freq: currentFreq },
+    }),
+  }).catch(() => {});
+
+  $('revealState').textContent = '◌ REVEAL REQUESTED';
 });
 
 // ============================================================================
