@@ -335,6 +335,112 @@
     margin-bottom: 14px;
     letter-spacing: 0.5px;
   }
+  /* === Match & Migrate Lock Graph =====================================
+     Three-line tracker showing: brain frequency, orb frequency, target.
+     Lines color-shift based on lock state (red NO LOCK → amber ACQUIRING
+     → green LOCKED → white TARGET REACHED). */
+  .mm-box {
+    margin-top: 14px;
+    padding: 12px 14px 10px;
+    background: var(--halo-deep);
+    border: 1px solid var(--halo-line);
+    position: relative;
+  }
+  .mm-box .corners::before, .mm-box .corners::after {
+    content: ''; position: absolute;
+    width: 10px; height: 10px;
+    border: 1px solid var(--halo-cyan);
+    pointer-events: none;
+  }
+  .mm-box .corners::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .mm-box .corners::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+  .mm-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .mm-title {
+    font-size: 9px; letter-spacing: 3px; color: var(--halo-text-dim);
+    text-transform: uppercase;
+  }
+  .mm-state {
+    font-family: monospace; font-size: 11px;
+    letter-spacing: 2px;
+    padding: 3px 10px;
+    border-radius: 2px;
+    transition: all 0.4s ease;
+  }
+  .mm-state.no-lock     { color: var(--halo-red);   border: 1px solid var(--halo-red);   background: rgba(255,48,80,0.08); }
+  .mm-state.acquiring   { color: var(--halo-amber); border: 1px solid var(--halo-amber); background: rgba(255,170,0,0.08); }
+  .mm-state.locked      { color: var(--halo-green); border: 1px solid var(--halo-green); background: rgba(0,255,136,0.10); box-shadow: 0 0 12px rgba(0,255,136,0.25); }
+  .mm-state.reached     { color: #ffffff;           border: 1px solid #ffffff;           background: rgba(255,255,255,0.10); box-shadow: 0 0 16px rgba(255,255,255,0.4); }
+
+  .mm-canvas-wrap {
+    position: relative;
+    height: 120px;
+    background: var(--halo-void);
+    border: 0.5px solid var(--halo-line);
+  }
+  .mm-canvas-wrap canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%; display: block;
+  }
+  .mm-axis-label {
+    position: absolute;
+    font-family: monospace; font-size: 8px;
+    color: var(--halo-text-faint); letter-spacing: 1px;
+    pointer-events: none;
+  }
+  .mm-axis-label.top    { top: 4px;    left: 6px; }
+  .mm-axis-label.bottom { bottom: 4px; left: 6px; }
+  .mm-axis-label.right  { top: 4px;    right: 6px; }
+
+  .mm-readouts {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+    font-family: monospace;
+  }
+  .mm-readout {
+    padding: 8px 10px;
+    background: var(--halo-void);
+    border-left: 2px solid;
+    transition: border-color 0.4s ease;
+  }
+  .mm-readout.brain  { border-left-color: var(--halo-cyan); }
+  .mm-readout.orb    { border-left-color: var(--halo-amber); }
+  .mm-readout.target { border-left-color: var(--halo-purple); }
+  .mm-readout .lbl {
+    font-size: 8px; letter-spacing: 2px; color: var(--halo-text-faint);
+    text-transform: uppercase;
+  }
+  .mm-readout .val {
+    font-size: 16px; color: var(--halo-text);
+    margin-top: 2px;
+  }
+  .mm-readout.brain  .val { color: var(--halo-cyan); }
+  .mm-readout.orb    .val { color: var(--halo-amber); }
+  .mm-readout.target .val { color: var(--halo-purple); }
+
+  .mm-engine {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: var(--halo-void);
+    font-family: monospace;
+    font-size: 10px;
+    color: var(--halo-text-dim);
+    letter-spacing: 1px;
+    display: flex; justify-content: space-between;
+  }
+  .mm-engine .action {
+    color: var(--halo-cyan);
+    text-transform: uppercase;
+  }
+  .mm-engine .action.amber { color: var(--halo-amber); }
+  .mm-engine .action.green { color: var(--halo-green); }
+  .mm-engine .action.red   { color: var(--halo-red); }
+
   /* === Sensor Quality Popup ===========================================
      Halo-aesthetic upgrade: top-down head silhouette, distinguished
      reference electrodes (CMS/DRL get special treatment), aggregate
@@ -744,6 +850,39 @@
       <div class="bands">
         <span class="corners"></span>
       </div>
+
+      <!-- Match & Migrate target-lock graph -->
+      <div class="mm-box">
+        <span class="corners"></span>
+        <div class="mm-header">
+          <div class="mm-title">Match &amp; Migrate · Target Lock</div>
+          <div class="mm-state no-lock" id="mmState">◌ NO LOCK</div>
+        </div>
+        <div class="mm-canvas-wrap">
+          <canvas id="mmCanvas"></canvas>
+          <div class="mm-axis-label top" id="mmHzMax">14 Hz</div>
+          <div class="mm-axis-label bottom" id="mmHzMin">2 Hz</div>
+          <div class="mm-axis-label right">60s window</div>
+        </div>
+        <div class="mm-readouts">
+          <div class="mm-readout brain">
+            <div class="lbl">Brain</div>
+            <div class="val" id="mmBrainHz">— Hz</div>
+          </div>
+          <div class="mm-readout orb">
+            <div class="lbl">Orb</div>
+            <div class="val" id="mmOrbHz">— Hz</div>
+          </div>
+          <div class="mm-readout target">
+            <div class="lbl">Target</div>
+            <div class="val" id="mmTargetHz">— Hz</div>
+          </div>
+        </div>
+        <div class="mm-engine">
+          <div>ENGINE</div>
+          <div class="action" id="mmEngineAction">STANDING BY</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -891,6 +1030,11 @@
       document.getElementById('protocolMeta').textContent =
         session.protocol_code || session.target_band.toUpperCase();
 
+      // Wire Match & Migrate target from the protocol
+      MatchMigrate.setTargetHz(session.target_frequency_hz);
+      // Orb defaults to the same frequency until autopilot moves it
+      MatchMigrate.setOrbHz(session.target_frequency_hz);
+
       if (session.status === 'active') {
         log('warn', 'Session was already active on load. Manual continuation.');
       } else if (session.status !== 'scheduled') {
@@ -954,6 +1098,11 @@
       if (typeof eegSource.onQuality === 'function') {
         eegSource.onQuality(onQualityReport);
       }
+      // Devices that send precomputed band powers (MindWave) bypass the local
+      // FFT path. Subscribe to the bandPowers stream directly.
+      if (typeof eegSource.onBandPowers === 'function') {
+        eegSource.onBandPowers(onBandPowersReport);
+      }
       await eegSource.connect();
       log('ok', `Headband linked · source: ${eegKind}`);
 
@@ -986,6 +1135,39 @@
     SensorQuality.updateLive(report);
   }
 
+  // For devices that send precomputed band powers (MindWave Mobile BLE).
+  // Updates the band HUD directly without needing local FFT, and feeds the
+  // Match & Migrate engine pipeline.
+  function onBandPowersReport(evt) {
+    if (!evt || !evt.bands) return;
+    const bands = evt.bands;
+    updateBandsUI(bands);
+    if (phase !== 'idle' && phase !== 'done') {
+      for (const b of BAND_KEYS) {
+        phaseBandAccum[b].sum += (bands[b] || 0);
+        phaseBandAccum[b].n += 1;
+      }
+    }
+    // Push the brain's current dominant frequency into the Match & Migrate
+    // tracker so the graph + lock state can update.
+    const brainHz = dominantFrequencyFromBands(bands);
+    MatchMigrate.pushBrainSample(brainHz);
+  }
+
+  // Compute the dominant brain frequency from band powers.
+  // Uses a power-weighted average of the bands' center frequencies.
+  function dominantFrequencyFromBands(bands) {
+    const centers = { delta: 2, theta: 6, alpha: 10, smr: 13.5, beta: 18, gamma: 35 };
+    let sumPower = 0, weightedHz = 0;
+    for (const b of BAND_KEYS) {
+      const p = bands[b] || 0;
+      sumPower += p;
+      weightedHz += p * centers[b];
+    }
+    if (sumPower <= 0) return null;
+    return weightedHz / sumPower;
+  }
+
   function onSample(sample) {
     sampleCount++;
     const incoming = sample.channels || [];
@@ -1015,6 +1197,9 @@
           phaseBandAccum[b].sum += powers[b];
           phaseBandAccum[b].n += 1;
         }
+        // Feed Match & Migrate (FFT-derived brain freq for non-MindWave devices)
+        const brainHz = dominantFrequencyFromBands(powers);
+        MatchMigrate.pushBrainSample(brainHz);
       }
     }
   }, 1000);
@@ -1087,19 +1272,27 @@
   });
 
   document.getElementById('preSubmit').addEventListener('click', async () => {
+    console.log('[preSubmit] clicked, preReport=', preReport);
     if (!preReport.stress || !preReport.focus || !preReport.mood) {
-      alert('Fill all three metrics before proceeding.');
+      alert('Fill all three metrics before proceeding.\n\nDebug: ' + JSON.stringify(preReport));
       return;
     }
     try {
+      console.log('[preSubmit] sending /api/sessions/' + sessionId + '/start');
       const r = await fetch(`/api/sessions/${sessionId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(preReport),
+        body: JSON.stringify({
+          pre_stress: preReport.stress,
+          pre_focus: preReport.focus,
+          pre_mood: preReport.mood,
+        }),
       });
+      console.log('[preSubmit] response status', r.status);
       if (r.status === 404) throw new Error('session not found');
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      console.log('[preSubmit] response data', data);
+      if (!r.ok) throw new Error(data.error || 'server error ' + r.status);
 
       document.getElementById('preModal').classList.remove('open');
       document.getElementById('preReport').innerHTML = `
@@ -1165,6 +1358,83 @@
     }
     log('ok', `Phase engaged · ${name.toUpperCase()}`);
     updateSessionStatus();
+  }
+
+  // ===== Autopilot Match-and-Migrate Loop =============================
+  // Runs every 2 seconds during the stimulus phase. Drives the orb toward
+  // the client's current brain frequency (match), then once locked,
+  // gradually pulls toward the protocol target (migrate). Safety-clamped.
+  let autopilotOrbHz = null;
+  setInterval(() => {
+    if (phase !== 'stimulus') {
+      MatchMigrate.setEngineAction('STANDING BY');
+      return;
+    }
+    if (!session) return;
+
+    const targetHz = session.target_frequency_hz;
+    const brainHz = currentBrainHzFromMM();
+    if (brainHz == null) {
+      MatchMigrate.setEngineAction('AWAITING SIGNAL', 'amber');
+      return;
+    }
+
+    // Initialize the orb frequency once we have a brain reading
+    if (autopilotOrbHz == null) {
+      autopilotOrbHz = targetHz;
+    }
+
+    // Match-and-migrate logic:
+    //   - If orb is far from brain (>1.5 Hz), pull orb toward brain (matching)
+    //   - If orb is near brain (locked), drift orb gently toward target (migrating)
+    //   - If brain has reached target, hold the orb at target
+    const matchGap = brainHz - autopilotOrbHz;
+    const targetGap = targetHz - brainHz;
+    let action = 'HOLD';
+    let severity = '';
+
+    if (Math.abs(targetGap) <= 0.5) {
+      // Brain has arrived at target - just hold
+      autopilotOrbHz = targetHz;
+      action = 'TARGET REACHED · HOLDING';
+      severity = 'green';
+    } else if (Math.abs(matchGap) > 1.5) {
+      // Need to match - pull orb toward brain at 50% per tick
+      autopilotOrbHz += matchGap * 0.5;
+      action = 'MATCHING · pulling orb toward brain';
+      severity = 'amber';
+    } else if (Math.abs(matchGap) > 0.5) {
+      // Acquiring lock - finer adjustment
+      autopilotOrbHz += matchGap * 0.6;
+      action = 'ACQUIRING LOCK · refining';
+      severity = 'amber';
+    } else {
+      // Locked - migrate orb toward target, brain follows via entrainment
+      // Move at 0.3 Hz per tick, clamped by direction
+      const step = Math.sign(targetGap) * Math.min(0.3, Math.abs(targetGap));
+      autopilotOrbHz += step;
+      action = 'MIGRATING · pulling brain to target';
+      severity = 'green';
+    }
+
+    // Hard safety clamp - 2 to 14 Hz, no exceptions
+    autopilotOrbHz = Math.max(2, Math.min(14, autopilotOrbHz));
+
+    // Update the engine readout + push orb sample for the graph
+    MatchMigrate.setOrbHz(autopilotOrbHz);
+    MatchMigrate.setEngineAction(action, severity);
+
+    // TODO: also send this directive over WebSocket to the stimulation player
+    // so the orb actually pulses at the new frequency. For now, the graph
+    // displays the engine's intent. (Wiring through ws-hub comes next.)
+  }, 2000);
+
+  // Helper to read the current brain Hz from MatchMigrate
+  function currentBrainHzFromMM() {
+    // Use the most recent brain sample from MatchMigrate's history
+    // (stored internally; we expose via a one-line getter)
+    const hz = window._mmCurrentBrainHz;
+    return hz != null ? hz : null;
   }
 
   async function advancePhase() {
@@ -1328,6 +1598,224 @@
       el.appendChild(b);
     }
   }
+
+  // ===== Match & Migrate Module =======================================
+  // Tracks three frequencies over a rolling 60-second window:
+  //   - brain: client's current dominant EEG frequency
+  //   - orb:   what the stimulation player is currently pulsing at
+  //   - target: the protocol's destination frequency
+  //
+  // Computes a lock state (NO_LOCK / ACQUIRING / LOCKED / TARGET_REACHED)
+  // based on how close the orb is to the brain (match) and how close the
+  // brain has gotten to the target (migrate). Renders all three lines on
+  // a canvas with color-shifting based on lock state — like missile lock.
+  const MatchMigrate = (function () {
+    const WINDOW_SEC = 60;
+    const HZ_MIN = 2;
+    const HZ_MAX = 14;
+
+    // History buffers — each entry is {t, hz}
+    const brainHistory  = [];
+    const orbHistory    = [];
+    const targetHistory = [];
+
+    let currentBrainHz = null;
+    let currentOrbHz = null;
+    let currentTargetHz = null;
+    let lockState = 'no-lock'; // no-lock / acquiring / locked / reached
+    let lockStateStart = Date.now();
+
+    function $(id) { return document.getElementById(id); }
+
+    function setTargetHz(hz) {
+      currentTargetHz = hz;
+      const label = $('mmTargetHz');
+      if (label) label.textContent = hz != null ? hz.toFixed(1) + ' Hz' : '— Hz';
+      pushTargetSample(hz);
+    }
+
+    function setOrbHz(hz) {
+      currentOrbHz = hz;
+      const label = $('mmOrbHz');
+      if (label) label.textContent = hz != null ? hz.toFixed(1) + ' Hz' : '— Hz';
+      pushOrbSample(hz);
+    }
+
+    function pushBrainSample(hz) {
+      if (hz == null || !isFinite(hz)) return;
+      // Clamp to chart range so off-band readings don't tank the display
+      const clamped = Math.max(HZ_MIN, Math.min(HZ_MAX, hz));
+      currentBrainHz = clamped;
+      window._mmCurrentBrainHz = clamped;  // for autopilot loop to read
+      const t = Date.now();
+      brainHistory.push({ t, hz: clamped });
+      pruneHistory(brainHistory);
+      const label = $('mmBrainHz');
+      if (label) label.textContent = clamped.toFixed(1) + ' Hz';
+      recomputeLock();
+    }
+
+    function pushOrbSample(hz) {
+      if (hz == null) return;
+      const t = Date.now();
+      orbHistory.push({ t, hz });
+      pruneHistory(orbHistory);
+      recomputeLock();
+    }
+
+    function pushTargetSample(hz) {
+      if (hz == null) return;
+      const t = Date.now();
+      targetHistory.push({ t, hz });
+      pruneHistory(targetHistory);
+    }
+
+    function pruneHistory(arr) {
+      const cutoff = Date.now() - WINDOW_SEC * 1000;
+      while (arr.length > 0 && arr[0].t < cutoff) arr.shift();
+    }
+
+    function recomputeLock() {
+      if (currentBrainHz == null || currentOrbHz == null || currentTargetHz == null) {
+        return setLockState('no-lock');
+      }
+      const matchGap = Math.abs(currentOrbHz - currentBrainHz);
+      const targetGap = Math.abs(currentBrainHz - currentTargetHz);
+
+      if (targetGap <= 0.5) {
+        setLockState('reached');
+      } else if (matchGap <= 0.5) {
+        setLockState('locked');
+      } else if (matchGap <= 1.5) {
+        setLockState('acquiring');
+      } else {
+        setLockState('no-lock');
+      }
+    }
+
+    function setLockState(s) {
+      if (s === lockState) return;
+      lockState = s;
+      lockStateStart = Date.now();
+      const el = $('mmState');
+      if (!el) return;
+      el.className = 'mm-state ' + s;
+      const labels = {
+        'no-lock':   '◌ NO LOCK',
+        'acquiring': '◐ ACQUIRING',
+        'locked':    '● LOCKED',
+        'reached':   '✦ TARGET REACHED',
+      };
+      el.textContent = labels[s] || s;
+      log('info', 'TARGET LOCK · ' + (labels[s] || s).toUpperCase());
+    }
+
+    function setEngineAction(action, severity) {
+      const el = $('mmEngineAction');
+      if (!el) return;
+      el.textContent = action || 'STANDING BY';
+      el.className = 'action' + (severity ? ' ' + severity : '');
+    }
+
+    // ---- Canvas rendering -----------------------------------------------
+    let canvas = null, ctx = null;
+    function ensureCanvas() {
+      if (canvas) return;
+      canvas = $('mmCanvas');
+      if (!canvas) return;
+      ctx = canvas.getContext('2d');
+      // Set up high-DPI canvas
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+    }
+
+    function render() {
+      ensureCanvas();
+      if (!ctx) return;
+      const rect = canvas.getBoundingClientRect();
+      const W = rect.width, H = rect.height;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // Background grid
+      ctx.strokeStyle = 'rgba(58, 86, 120, 0.18)';
+      ctx.lineWidth = 0.5;
+      for (let i = 1; i < 6; i++) {
+        const y = (i / 6) * H;
+        ctx.beginPath();
+        ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+      for (let i = 1; i < 6; i++) {
+        const x = (i / 6) * W;
+        ctx.beginPath();
+        ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+
+      // Helper to translate (t, hz) → (x, y)
+      const now = Date.now();
+      function plot(history, color, lineWidth, glow) {
+        if (history.length === 0) return;
+        ctx.beginPath();
+        for (let i = 0; i < history.length; i++) {
+          const { t, hz } = history[i];
+          const xRatio = 1 - (now - t) / (WINDOW_SEC * 1000);
+          const yRatio = 1 - (hz - HZ_MIN) / (HZ_MAX - HZ_MIN);
+          const x = xRatio * W;
+          const y = yRatio * H;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        if (glow) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 8;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      // Lock-state-aware colors. When LOCKED, lines all glow green together.
+      const LOCK_COLORS = {
+        'no-lock':   { brain: '#00d4ff', orb: '#ff3050', target: '#aa66ff' },
+        'acquiring': { brain: '#00d4ff', orb: '#ffaa00', target: '#aa66ff' },
+        'locked':    { brain: '#00ff88', orb: '#00ff88', target: '#aa66ff' },
+        'reached':   { brain: '#ffffff', orb: '#ffffff', target: '#ffffff' },
+      };
+      const colors = LOCK_COLORS[lockState] || LOCK_COLORS['no-lock'];
+
+      // Target line first (background)
+      plot(targetHistory, colors.target, 1.5, false);
+      // Then orb (the stimulation)
+      plot(orbHistory, colors.orb, 2, lockState === 'locked' || lockState === 'reached');
+      // Then brain (foreground - what we care about most)
+      plot(brainHistory, colors.brain, 2.5, lockState === 'locked' || lockState === 'reached');
+
+      // "Now" indicator (right edge)
+      ctx.strokeStyle = 'rgba(0, 212, 255, 0.4)';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(W - 1, 0); ctx.lineTo(W - 1, H);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Render at 10Hz
+    setInterval(render, 100);
+
+    return {
+      setTargetHz, setOrbHz,
+      pushBrainSample, pushOrbSample, pushTargetSample,
+      setEngineAction,
+      getLockState: () => lockState,
+    };
+  })();
 
   // ===== Sensor Quality Module =========================================
   // Manages the pre-session electrode-check popup AND the live-monitor strip
