@@ -467,16 +467,18 @@ window.WellnessEEG = (function () {
     this._sampleCbs = new Set();
     this._statusCbs = new Set();
     this._qualityCbs = new Set();
+    this._bandPowerCbs = new Set();   // NEW: precomputed band powers from MindWave
     this._ws = null;
     this._reconnectDelay = 1000;
     this._wantOpen = false;
     this._profile = {
       code: 'myndband',
-      display_name: 'MyndPlay MyndBand',
+      display_name: 'MyndPlay MindWave',
       channel_count: 1,
       channel_map: ['Fp1'],
-      sample_rate_hz: 512,
+      sample_rate_hz: 3,            // band-power update rate, not raw
       frontal_available: true,
+      data_format: 'band_powers',
     };
 
     function bridgeUrl() {
@@ -510,8 +512,51 @@ window.WellnessEEG = (function () {
             let msg; try { msg = JSON.parse(ev.data); } catch { return; }
             if (msg.type === 'profile' && msg.payload) {
               self._profile = Object.assign({}, self._profile, msg.payload);
+            } else if (msg.type === 'band_powers' && msg.payload) {
+              // MindWave Mobile BLE only exposes pre-computed band powers,
+              // not raw waveform samples. Convert to two events:
+              // 1. A synthesized "sample" event so the runner's existing
+              //    waveform display animates (we use total band power scaled
+              //    to look like a microvolt value, just for display).
+              // 2. A bandPowers event for the analysis engine to consume directly.
+              const bands = msg.payload.bands || {};
+              const t = msg.payload.t || Date.now();
+
+              // Build an analysis-engine-shaped band_powers object
+              // (combining low/high alpha into 'alpha', low/high beta into 'beta', etc.)
+              const consolidated = {
+                delta:  bands.delta  || 0,
+                theta:  bands.theta  || 0,
+                alpha:  (bands.low_alpha || 0) + (bands.high_alpha || 0),
+                smr:    bands.low_beta || 0,  // low-beta ~12-15Hz overlaps SMR
+                beta:   (bands.low_beta || 0) + (bands.high_beta || 0),
+                gamma:  (bands.low_gamma || 0) + (bands.mid_gamma || 0),
+              };
+
+              // Emit a sample event for the waveform display.
+              // Scale total band power to a reasonable display range.
+              const total = consolidated.delta + consolidated.theta
+                          + consolidated.alpha + consolidated.beta + consolidated.gamma;
+              // Normalize: NeuroSky band values are dimensionless 24-bit counts;
+              // scale to roughly -50..+50 range for the scope display.
+              const scope_uv = total > 0 ? Math.log10(total) * 12 - 30 : 0;
+              const sample = { t, channels: [scope_uv] };
+              for (const cb of self._sampleCbs) { try { cb(sample); } catch(e) {} }
+
+              // Emit a bandPowers event the runner can subscribe to and
+              // pass straight to the analysis state detector
+              if (self._bandPowerCbs) {
+                const evt = {
+                  t,
+                  channel: 'Fp1',
+                  bands: consolidated,
+                  raw_bands: bands,             // keep originals for advanced use
+                  poor_signal: msg.payload.poor_signal,
+                };
+                for (const cb of self._bandPowerCbs) { try { cb(evt); } catch(e) {} }
+              }
             } else if (msg.type === 'sample_batch' && msg.payload) {
-              // Expand the batch into single-sample events
+              // Original protocol — fan batch into single-sample events
               const samples = msg.payload.samples || [];
               const baseT = msg.payload.t || Date.now();
               const sr = self._profile.sample_rate_hz || 512;
@@ -519,12 +564,11 @@ window.WellnessEEG = (function () {
               for (let i = 0; i < samples.length; i++) {
                 const sample = {
                   t: baseT - (samples.length - 1 - i) * dt,
-                  channels: [samples[i]],  // single-channel: array of length 1
+                  channels: [samples[i]],
                 };
                 for (const cb of self._sampleCbs) { try { cb(sample); } catch(e) {} }
               }
             } else if (msg.type === 'sample' && msg.payload) {
-              // Older single-sample format compatibility
               const sample = { t: msg.payload.t || Date.now(),
                                channels: msg.payload.channels || [msg.payload.raw_uv || 0] };
               for (const cb of self._sampleCbs) { try { cb(sample); } catch(e) {} }
@@ -569,6 +613,7 @@ window.WellnessEEG = (function () {
     this.onSample  = (cb) => { self._sampleCbs.add(cb);  return () => self._sampleCbs.delete(cb); };
     this.onStatus  = (cb) => { self._statusCbs.add(cb);  return () => self._statusCbs.delete(cb); };
     this.onQuality = (cb) => { self._qualityCbs.add(cb); return () => self._qualityCbs.delete(cb); };
+    this.onBandPowers = (cb) => { self._bandPowerCbs.add(cb); return () => self._bandPowerCbs.delete(cb); };
     this.setStimulusMode = function () { /* no-op */ };
     this.getProfile = () => Object.assign({}, self._profile);
     this._emitStatus = function (s) { for (const cb of self._statusCbs) { try { cb(s); } catch(e) {} } };
