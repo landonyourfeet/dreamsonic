@@ -17,6 +17,8 @@
   body.show-cursor { cursor: default; }
 
   canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+  #nebula3d { z-index: 1; }
+  #scene { z-index: 2; }
 
   .hud {
     position: absolute; inset: 0;
@@ -132,6 +134,7 @@
 </style>
 </head>
 <body>
+  <canvas id="nebula3d"></canvas>
   <canvas id="scene"></canvas>
 
   <div class="hud">
@@ -218,7 +221,7 @@ let eyeClosed          = false;
 
 // ---------- Canvas setup ----------
 const canvas = document.getElementById('scene');
-const ctx = canvas.getContext('2d', { alpha: false });
+const ctx = canvas.getContext('2d', { alpha: true });
 let W = 0, H = 0, cx = 0, cy = 0;
 let dpr = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -288,6 +291,12 @@ function render(now) {
   const rampProgress = Math.min(1, (now - rampStartTime) / rampDurationMs);
   effectiveIntensity = rampStartValue + (targetIntensity - rampStartValue) * rampProgress;
 
+  // Sync state to window so the WebGL nebula layer (separate script)
+  // can read the current pulse parameters every frame.
+  window.targetHz = targetHz;
+  window.effectiveIntensity = effectiveIntensity;
+  window.eyeClosed = eyeClosed;
+
   // ---- GLOBAL PULSE — drives the full-field photic stimulation ----
   // The whole viewport luminance swings at the entrainment frequency.
   // This is what real clinical photic devices do (Mind Alive, Roxiva,
@@ -305,23 +314,21 @@ function render(now) {
   const closedEyeBoost = eyeClosed ? 1.35 : 1.0;
   const pulseFieldStrength = pulseSharp * intNorm * closedEyeBoost;
 
-  // Field background — pulses from pure black (trough) up to a deep
-  // saturated purple at peaks. The base color is dark enough to feel
-  // like space at the trough but bright enough at peaks to drive
-  // photic entrainment across the whole retina.
-  const fieldR = Math.round(pulseFieldStrength * 95);
-  const fieldG = Math.round(pulseFieldStrength * 55);
-  const fieldB = Math.round(pulseFieldStrength * 175);
-  ctx.fillStyle = `rgb(${fieldR},${fieldG},${fieldB})`;
+  // Field pulse — now a translucent overlay on top of the WebGL nebula
+  // rather than solid background. The nebula provides the deep-space
+  // immersion; the field pulse provides the entrainment-rate brightness
+  // swing across the entire viewport so closed eyes still see the rhythm.
+  ctx.clearRect(0, 0, W, H);
+  const fieldR = Math.round(pulseFieldStrength * 130);
+  const fieldG = Math.round(pulseFieldStrength * 70);
+  const fieldB = Math.round(pulseFieldStrength * 220);
+  const fieldA = 0.40 + pulseFieldStrength * 0.40;
+  ctx.fillStyle = `rgba(${fieldR},${fieldG},${fieldB},${fieldA})`;
   ctx.fillRect(0, 0, W, H);
 
-  // Draw nebula wisps (static, just slow breathing)
-  drawNebulae(now);
-
-  // Draw star field (twinkles but doesn't strobe coherently)
+  // Stars + orbital rings stay as 2D — they are subtle accent layers
+  // over the volumetric nebula, the orb is the photic anchor.
   drawStars(now);
-
-  // Draw orbital rings (the autopilot layer - rotate at fixed speeds)
   drawOrbits(now);
 
   // Draw the ORB (focal point - now sits within the pulsing field)
@@ -888,6 +895,11 @@ function applyDirective(d) {
   if (typeof d.frequencyHz === 'number') {
     Journey.orbHz = targetHz;
   }
+  // Expose state to window so the WebGL nebula script (separate IIFE)
+  // can read the current pulse parameters.
+  window.targetHz = targetHz;
+  window.effectiveIntensity = effectiveIntensity;
+  window.eyeClosed = eyeClosed;
 }
 
 function updateStateBanner(action, reason) {
@@ -1020,6 +1032,369 @@ document.getElementById('targetFreq').textContent = targetHz.toFixed(1) + ' Hz';
 resize();
 connect();
 requestAnimationFrame(render);
+</script>
+
+<!-- ============================================================ -->
+<!-- WebGL VOLUMETRIC NEBULA - Three.js immersive 3D space layer  -->
+<!-- ============================================================ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+(function() {
+  if (typeof THREE === 'undefined') {
+    console.warn('[nebula3d] Three.js failed to load - skipping WebGL layer');
+    return;
+  }
+
+  const canvasGL = document.getElementById('nebula3d');
+  if (!canvasGL) return;
+
+  let renderer, scene, camera;
+  let nebulaGroup, particleField, deepStars;
+  let coreLight, accentLightA, accentLightB;
+  let nebulaMaterials = [];
+  let starShader = null;
+
+  // Init Three.js renderer
+  try {
+    renderer = new THREE.WebGLRenderer({
+      canvas: canvasGL,
+      alpha: true,
+      antialias: false,        // we use additive particles, no edges to alias
+      powerPreference: 'high-performance',
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);  // pure transparent so 2D layer above blends
+  } catch (e) {
+    console.warn('[nebula3d] WebGL not available', e);
+    return;
+  }
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x000005, 0.012);
+
+  camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
+  camera.position.set(0, 0, 28);
+  camera.lookAt(0, 0, 0);
+
+  // ---------------- Volumetric gas clouds -------------------
+  // Each cloud is a sprite-like billboard with a custom shader that
+  // renders soft volumetric falloff. We layer many at varying depths
+  // for a real volumetric feel.
+  const CLOUD_COUNT = 90;
+  nebulaGroup = new THREE.Group();
+  scene.add(nebulaGroup);
+
+  const cloudVertexShader = `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `;
+
+  const cloudFragmentShader = `
+    uniform vec3 uColor;
+    uniform float uDensity;
+    uniform float uPulse;
+    uniform float uTime;
+    uniform float uSeed;
+    varying vec2 vUv;
+
+    // Cheap multi-octave noise for cloud structure
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x),
+                 mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+    }
+    float fbm(vec2 p) {
+      float v = 0.0, a = 0.5;
+      for (int i = 0; i < 4; i++) {
+        v += a * noise(p);
+        p *= 2.0; a *= 0.5;
+      }
+      return v;
+    }
+
+    void main() {
+      vec2 p = vUv * 2.0 - 1.0;
+      float dist = length(p);
+
+      // Outer falloff (soft edge of the cloud)
+      float falloff = smoothstep(1.0, 0.0, dist);
+
+      // Internal gas structure via fbm noise
+      vec2 nuv = vUv * 3.5 + vec2(uSeed * 7.3, uSeed * 13.1);
+      nuv += vec2(uTime * 0.012, uTime * -0.008);
+      float n = fbm(nuv);
+      float n2 = fbm(nuv * 2.3 + vec2(2.0));
+
+      // Combine - structured gas with bright filaments
+      float gas = falloff * (0.45 + 0.55 * n) * (0.6 + 0.7 * n2);
+
+      // Pulse modulation - the entire cloud breathes with the entrainment
+      gas *= (0.85 + 0.35 * uPulse);
+
+      // Color with internal warmth at filaments
+      vec3 col = uColor * (1.0 + n2 * 0.4);
+
+      // Brighter highlights where filaments concentrate
+      col += vec3(0.18, 0.10, 0.25) * pow(n * n2, 2.0);
+
+      gl_FragColor = vec4(col, gas * uDensity);
+    }
+  `;
+
+  const cloudPalette = [
+    new THREE.Color(0x6b3aa8),  // purple
+    new THREE.Color(0x4a2a8a),  // deep violet
+    new THREE.Color(0x8050c8),  // lighter purple
+    new THREE.Color(0x3a1a6b),  // dark indigo
+    new THREE.Color(0xa060d0),  // pink-purple
+    new THREE.Color(0x5b35b3),  // royal
+    new THREE.Color(0x7040b8),  // lavender
+    new THREE.Color(0x2a1066),  // very dark
+  ];
+
+  // Create the cloud field
+  const cloudGeometry = new THREE.PlaneGeometry(1, 1);
+  for (let i = 0; i < CLOUD_COUNT; i++) {
+    const color = cloudPalette[i % cloudPalette.length];
+    const seed = Math.random() * 100;
+
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor:   { value: color.clone() },
+        uDensity: { value: 0.5 + Math.random() * 0.4 },
+        uPulse:   { value: 0 },
+        uTime:    { value: 0 },
+        uSeed:    { value: seed },
+      },
+      vertexShader: cloudVertexShader,
+      fragmentShader: cloudFragmentShader,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    nebulaMaterials.push(material);
+
+    const sprite = new THREE.Mesh(cloudGeometry, material);
+
+    // Distribute in a flattened sphere/ellipsoid around origin
+    const theta = Math.random() * Math.PI * 2;
+    const phi = (Math.random() - 0.5) * 0.6;  // flatten vertically
+    const r = 6 + Math.random() * 22;
+    sprite.position.set(
+      Math.cos(theta) * r,
+      Math.sin(phi) * r * 0.7 + (Math.random() - 0.5) * 4,
+      Math.sin(theta) * r * 0.6 - 8
+    );
+
+    // Scale cloud size — bigger ones in the back for depth
+    const depth = -sprite.position.z;
+    const scale = 6 + Math.random() * 10 + depth * 0.15;
+    sprite.scale.set(scale, scale, 1);
+
+    // Random Z rotation for variety
+    sprite.rotation.z = Math.random() * Math.PI * 2;
+
+    sprite.userData = {
+      driftSpeed: 0.02 + Math.random() * 0.03,
+      driftPhase: Math.random() * Math.PI * 2,
+      baseY: sprite.position.y,
+      rotSpeed: (Math.random() - 0.5) * 0.0008,
+    };
+
+    nebulaGroup.add(sprite);
+  }
+
+  // ---------------- Deep star field (3D, parallax) ------------
+  const STAR_COUNT = 4000;
+  const starPositions = new Float32Array(STAR_COUNT * 3);
+  const starColors = new Float32Array(STAR_COUNT * 3);
+  const starSizes = new Float32Array(STAR_COUNT);
+
+  for (let i = 0; i < STAR_COUNT; i++) {
+    // Distribute in a large sphere around the camera
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = 35 + Math.random() * 80;
+
+    starPositions[i * 3]     = Math.sin(phi) * Math.cos(theta) * r;
+    starPositions[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * r;
+    starPositions[i * 3 + 2] = Math.cos(phi) * r;
+
+    // Color variety - mostly white-blue, some warm
+    const tint = Math.random();
+    if (tint < 0.7) {
+      starColors[i * 3]     = 0.9 + Math.random() * 0.1;
+      starColors[i * 3 + 1] = 0.92 + Math.random() * 0.08;
+      starColors[i * 3 + 2] = 1.0;
+    } else if (tint < 0.9) {
+      starColors[i * 3]     = 1.0;
+      starColors[i * 3 + 1] = 0.85;
+      starColors[i * 3 + 2] = 0.7;
+    } else {
+      starColors[i * 3]     = 0.85;
+      starColors[i * 3 + 1] = 0.92;
+      starColors[i * 3 + 2] = 1.0;
+    }
+
+    starSizes[i] = 0.05 + Math.random() * 0.18;
+  }
+
+  const starGeometry = new THREE.BufferGeometry();
+  starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+  starGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+  starGeometry.setAttribute('size', new THREE.BufferAttribute(starSizes, 1));
+
+  starShader = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uPulse: { value: 0 },
+    },
+    vertexShader: `
+      attribute float size;
+      varying vec3 vColor;
+      uniform float uTime;
+      void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        // Each star twinkles at its own rate (using position as seed)
+        float seed = position.x * 0.7 + position.y * 1.3 + position.z * 0.5;
+        float twinkle = 0.7 + 0.3 * sin(uTime * 2.5 + seed);
+        gl_PointSize = size * twinkle * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      uniform float uPulse;
+      void main() {
+        vec2 c = gl_PointCoord - vec2(0.5);
+        float d = length(c);
+        if (d > 0.5) discard;
+        float alpha = smoothstep(0.5, 0.0, d);
+        // Stars subtly brighten with the pulse so they feel part of the universe
+        gl_FragColor = vec4(vColor * (0.85 + 0.4 * uPulse), alpha);
+      }
+    `,
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  deepStars = new THREE.Points(starGeometry, starShader);
+  scene.add(deepStars);
+
+  // ---------------- Bright accent particles (close to camera) -----
+  const dustCount = 800;
+  const dustPositions = new Float32Array(dustCount * 3);
+  const dustColors = new Float32Array(dustCount * 3);
+  for (let i = 0; i < dustCount; i++) {
+    dustPositions[i * 3]     = (Math.random() - 0.5) * 60;
+    dustPositions[i * 3 + 1] = (Math.random() - 0.5) * 40;
+    dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 50;
+    const c = cloudPalette[Math.floor(Math.random() * cloudPalette.length)];
+    dustColors[i * 3]     = c.r * 1.4;
+    dustColors[i * 3 + 1] = c.g * 1.4;
+    dustColors[i * 3 + 2] = c.b * 1.4;
+  }
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+  dustGeo.setAttribute('color', new THREE.BufferAttribute(dustColors, 3));
+  const dustMat = new THREE.PointsMaterial({
+    size: 0.18, vertexColors: true, transparent: true,
+    opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  particleField = new THREE.Points(dustGeo, dustMat);
+  scene.add(particleField);
+
+  // ---------------- Resize handler ----------------------------
+  function resize() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ---------------- Animation loop ----------------------------
+  let nebulaStart = performance.now();
+  function animate() {
+    const now = performance.now();
+    const t = (now - nebulaStart) / 1000;
+
+    // Pull pulse from the global state (defined in main player script)
+    // The 2D layer computed pulseFieldStrength which we use here too,
+    // but since this script runs in a separate IIFE we recompute it
+    // from the same source values.
+    const targetHzNow = (typeof window.targetHz === 'number')
+      ? window.targetHz
+      : (typeof targetHz === 'number' ? targetHz : 10);
+    const intensityNow = (typeof window.effectiveIntensity === 'number')
+      ? window.effectiveIntensity / 100
+      : (typeof effectiveIntensity === 'number' ? effectiveIntensity / 100 : 0);
+    const eyeBoost = (typeof window.eyeClosed === 'boolean' && window.eyeClosed)
+      ? 1.35
+      : (typeof eyeClosed === 'boolean' && eyeClosed ? 1.35 : 1.0);
+
+    const phase = t * targetHzNow * Math.PI * 2;
+    const sineP = (Math.sin(phase) + 1) / 2;
+    const pulseSharp = Math.pow(sineP, 2.2) * intensityNow * eyeBoost;
+
+    // Slow camera drift - subtle, gives parallax
+    camera.position.x = Math.sin(t * 0.03) * 1.4;
+    camera.position.y = Math.cos(t * 0.04) * 0.8;
+    camera.position.z = 28 + Math.sin(t * 0.025) * 1.5;
+    camera.lookAt(0, 0, 0);
+
+    // Animate clouds
+    for (let i = 0; i < nebulaGroup.children.length; i++) {
+      const c = nebulaGroup.children[i];
+      const u = c.userData;
+      // Slow drift
+      c.position.y = u.baseY + Math.sin(t * u.driftSpeed + u.driftPhase) * 1.8;
+      c.rotation.z += u.rotSpeed;
+      // Bill-board toward camera so they always face us (volumetric look)
+      c.lookAt(camera.position);
+    }
+
+    // Update all cloud shaders with pulse + time
+    for (const m of nebulaMaterials) {
+      m.uniforms.uTime.value = t;
+      m.uniforms.uPulse.value = pulseSharp;
+    }
+
+    // Stars twinkle + pulse
+    if (starShader) {
+      starShader.uniforms.uTime.value = t;
+      starShader.uniforms.uPulse.value = pulseSharp;
+    }
+
+    // Slow rotate the dust particles for atmosphere
+    if (particleField) {
+      particleField.rotation.y = t * 0.005;
+      particleField.rotation.x = t * 0.003;
+    }
+
+    // Whole nebula group slowly rotates - very subtle so it feels alive
+    nebulaGroup.rotation.y = t * 0.008;
+    nebulaGroup.rotation.x = Math.sin(t * 0.012) * 0.05;
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  console.log('[nebula3d] Initialized · ' + CLOUD_COUNT + ' clouds, ' + STAR_COUNT + ' stars');
+})();
 </script>
 </body>
 </html>
