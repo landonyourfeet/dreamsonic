@@ -292,6 +292,10 @@ function render(now) {
   // Draw the ORB (the only element that pulses at target Hz)
   drawOrb(now);
 
+  // Draw the Journey ribbons overlay (toggled on/off via cockpit directive).
+  // Returns immediately if Journey mode is off. Orb stays visible underneath.
+  if (typeof drawJourney === 'function') drawJourney(now);
+
   requestAnimationFrame(render);
 }
 
@@ -386,44 +390,62 @@ function drawOrb(now) {
   if (coherenceBoost > 0) coherenceBoost = Math.max(0, coherenceBoost - 0.003);
 
   // --- DRAW ORB ---
+  // Pulse contrast amplifier within safety caps - drives more dramatic
+  // visual swing while keeping luminance in the [LUM_MIN, LUM_MAX] band.
+  // Quadratic easing on the pulse phase makes peaks feel more like flashes.
+  const pulseEased = pulseLum * pulseLum / (pulseLum + 0.001) * 1.15;
+  const pulseImpact = Math.min(1, pulseEased * intNorm + (1 - intNorm) * 0.5);
+
+  // Peripheral ambient glow - large soft pulse covering more of the field
+  // of view at lower opacity. Stays inside the area cap because it's diffuse.
+  const ambientRadius = Math.min(W, H) * 0.55;
+  const ambientGrad = ctx.createRadialGradient(cx, cy, orbRadius * 1.5, cx, cy, ambientRadius);
+  ambientGrad.addColorStop(0, `rgba(86, 55, 201, ${0.32 * pulseImpact})`);
+  ambientGrad.addColorStop(0.4, `rgba(58, 39, 160, ${0.18 * pulseImpact})`);
+  ambientGrad.addColorStop(1, 'rgba(20, 12, 50, 0)');
+  ctx.fillStyle = ambientGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, ambientRadius, 0, Math.PI * 2);
+  ctx.fill();
+
   // Outermost halo (largest, dimmest)
-  const haloRadius = orbRadius * 3.2;
-  ctx.fillStyle = `rgba(42, 26, 106, ${0.18 * pulseLum})`;
+  const haloRadius = orbRadius * 3.6;
+  ctx.fillStyle = `rgba(42, 26, 106, ${0.28 * pulseImpact})`;
   ctx.beginPath();
   ctx.arc(cx, cy, haloRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(58, 39, 160, ${0.28 * pulseLum})`;
+  ctx.fillStyle = `rgba(58, 39, 160, ${0.42 * pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 2.5, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 2.7, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(86, 55, 201, ${0.42 * pulseLum})`;
+  ctx.fillStyle = `rgba(86, 55, 201, ${0.58 * pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 1.9, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 2.0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(122, 86, 232, ${0.6 * pulseLum})`;
+  ctx.fillStyle = `rgba(122, 86, 232, ${0.78 * pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 1.45, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 1.5, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(165, 131, 255, ${0.8 * pulseLum})`;
+  ctx.fillStyle = `rgba(180, 145, 255, ${0.92 * pulseImpact})`;
   ctx.beginPath();
   ctx.arc(cx, cy, orbRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(212, 186, 255, ${0.9 * pulseLum})`;
+  ctx.fillStyle = `rgba(220, 196, 255, ${pulseImpact})`;
   ctx.beginPath();
   ctx.arc(cx, cy, orbRadius * 0.7, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(240, 224, 255, ${pulseLum})`;
+  ctx.fillStyle = `rgba(245, 232, 255, ${pulseImpact})`;
   ctx.beginPath();
   ctx.arc(cx, cy, orbRadius * 0.44, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(255, 255, 255, ${pulseLum})`;
+  ctx.fillStyle = `rgba(255, 255, 255, ${pulseImpact})`;
   ctx.beginPath();
   ctx.arc(cx, cy, orbRadius * 0.22, 0, Math.PI * 2);
   ctx.fill();
@@ -520,6 +542,250 @@ function updateAudio() {
 setInterval(updateAudio, 100);
 
 // ---------- Directive handling ----------
+// ===== Journey Ribbons Module =========================================
+// Bioluminescent overlay rendered ON TOP of the orb when activated.
+// Two organic ribbons drift through space - one is the client's brain
+// frequency (cool teal), one is the protocol target (warm gold). They
+// move organically using Perlin-style noise. As the brain approaches
+// target, the ribbons drift toward each other; when locked they orbit;
+// when target is reached they intertwine into a double-helix.
+//
+// The ORB underneath continues to provide the actual photic entrainment.
+// The ribbons are pure visual feedback - they do not pulse on the timing
+// of the entrainment frequency, they pulse with each ribbon's own Hz to
+// give the client a sense of "this is me, this is where we're going."
+const Journey = {
+  enabled: false,
+  fadeAlpha: 0,            // 0 (off) to 1 (full visibility)
+  brainHz: null,           // client's current brain frequency (from runner)
+  targetHz: null,          // protocol target (from runner)
+  orbHz: null,             // current orb stimulation frequency
+  lockState: 'no-lock',    // no-lock / acquiring / locked / reached
+  brainPhase: Math.random() * 1000,
+  targetPhase: Math.random() * 1000,
+  brainTrail: [],          // particle trail behind the brain ribbon
+  targetTrail: [],         // particle trail behind the target ribbon
+};
+
+// Simple smooth noise function (cheap pseudo-Perlin using sin sums)
+function smoothNoise(x, seed) {
+  return (Math.sin(x * 1.0 + seed) * 0.5
+        + Math.sin(x * 2.3 + seed * 1.4) * 0.25
+        + Math.sin(x * 0.7 + seed * 0.8) * 0.25);
+}
+
+function drawJourney(now) {
+  // Smooth fade in/out — eased toward target visibility (0 or 1)
+  const want = Journey.enabled ? 1 : 0;
+  const fadeSpeed = 0.012;  // about 1.5 seconds for full crossfade
+  if (Journey.fadeAlpha < want) {
+    Journey.fadeAlpha = Math.min(want, Journey.fadeAlpha + fadeSpeed);
+  } else if (Journey.fadeAlpha > want) {
+    Journey.fadeAlpha = Math.max(want, Journey.fadeAlpha - fadeSpeed);
+  }
+  if (Journey.fadeAlpha <= 0.001) return;  // nothing visible, skip render
+
+  const t = now / 1000;
+  const overall = Journey.fadeAlpha;
+
+  // If we don't have brain/target Hz yet, use orb frequency as a fallback
+  // so the visualization at least animates while waiting for first reading.
+  const brainHz  = Journey.brainHz  != null ? Journey.brainHz  : (Journey.orbHz || targetHz || 10);
+  const targetHzJ = Journey.targetHz != null ? Journey.targetHz : (targetHz || 10);
+
+  // Compute proximity 0..1 (1 = perfectly aligned, 0 = max separation)
+  const gap = Math.abs(brainHz - targetHzJ);
+  const proximity = Math.max(0, 1 - gap / 6);  // 6Hz = max visual separation
+
+  // Pulsing scale for each ribbon (own Hz — gives the client a sense
+  // of where their brain is vs. target, not just a single combined pulse)
+  const brainPulse  = (Math.sin(t * brainHz  * Math.PI * 2) + 1) / 2;
+  const targetPulse = (Math.sin(t * targetHzJ * Math.PI * 2) + 1) / 2;
+
+  // Update slow phases (gentle drift through space)
+  Journey.brainPhase  += 0.004;
+  Journey.targetPhase += 0.0035;
+
+  // ---- Compute control points for each ribbon ----
+  // Each ribbon is a flowing curve sampled at N points, from left to right.
+  // Y position is driven by smooth noise + a gravitational attraction
+  // toward the other ribbon based on proximity.
+  const N = 60;
+  const ribbonAmplitude = H * 0.18;
+  const baseSeparation = H * 0.32;  // when far apart
+  const minSeparation  = H * 0.04;  // when locked
+
+  // Where the ribbons "want" to be vertically
+  let brainCenterY, targetCenterY;
+  if (Journey.lockState === 'reached') {
+    // Both centered, intertwining
+    brainCenterY = H * 0.5;
+    targetCenterY = H * 0.5;
+  } else if (Journey.lockState === 'locked') {
+    // Close together, orbiting
+    brainCenterY = H * 0.5 - minSeparation * 0.5;
+    targetCenterY = H * 0.5 + minSeparation * 0.5;
+  } else {
+    // Apart, distance based on proximity
+    const sep = baseSeparation - (baseSeparation - minSeparation) * proximity;
+    brainCenterY = H * 0.5 - sep * 0.5;
+    targetCenterY = H * 0.5 + sep * 0.5;
+  }
+
+  // Sample brain ribbon points
+  const brainPts = [];
+  const targetPts = [];
+  for (let i = 0; i <= N; i++) {
+    const f = i / N;
+    const x = f * W;
+    // Brain ribbon flow
+    const brainNoise = smoothNoise(f * 4 + Journey.brainPhase, 17.3);
+    let bY = brainCenterY + brainNoise * ribbonAmplitude;
+    // Target ribbon flow
+    const targetNoise = smoothNoise(f * 3.5 + Journey.targetPhase, 91.7);
+    let tY = targetCenterY + targetNoise * ribbonAmplitude;
+
+    if (Journey.lockState === 'reached') {
+      // Double-helix: spiral around shared center
+      const spiralPhase = f * Math.PI * 4 + t * 0.6;
+      const spiralAmp = H * 0.08;
+      bY = H * 0.5 + Math.sin(spiralPhase) * spiralAmp + brainNoise * 8;
+      tY = H * 0.5 - Math.sin(spiralPhase) * spiralAmp + targetNoise * 8;
+    } else if (Journey.lockState === 'locked') {
+      // Slow orbit around shared center
+      const orbitPhase = f * Math.PI * 2 + t * 0.4;
+      const orbitAmp = H * 0.05;
+      bY += Math.sin(orbitPhase) * orbitAmp;
+      tY += Math.sin(orbitPhase + Math.PI) * orbitAmp;
+    }
+
+    brainPts.push({ x, y: bY });
+    targetPts.push({ x, y: tY });
+  }
+
+  // ---- Render bridges between ribbons (when locked or reached) ----
+  ctx.save();
+  ctx.globalAlpha = overall;
+
+  if (Journey.lockState === 'locked' || Journey.lockState === 'reached') {
+    const bridgeAlpha = Journey.lockState === 'reached' ? 0.4 : 0.2;
+    ctx.strokeStyle = `rgba(180, 240, 220, ${bridgeAlpha})`;
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < brainPts.length; i += 6) {
+      const distY = Math.abs(brainPts[i].y - targetPts[i].y);
+      if (distY < H * 0.15) {
+        const fade = 1 - distY / (H * 0.15);
+        ctx.globalAlpha = overall * bridgeAlpha * fade;
+        ctx.beginPath();
+        ctx.moveTo(brainPts[i].x, brainPts[i].y);
+        ctx.lineTo(targetPts[i].x, targetPts[i].y);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = overall;
+  }
+
+  // ---- Render Target ribbon (warm gold/amber) ----
+  drawRibbon(targetPts, {
+    coreColor:  Journey.lockState === 'reached' ? 'rgba(255, 245, 220, ALPHA)' : 'rgba(255, 215, 130, ALPHA)',
+    glowColor:  Journey.lockState === 'reached' ? 'rgba(255, 232, 180, ALPHA)' : 'rgba(220, 165, 60, ALPHA)',
+    outerColor: 'rgba(140, 95, 30, ALPHA)',
+    pulse: targetPulse,
+    overall,
+  });
+
+  // ---- Render Brain ribbon (cool teal/cyan) ----
+  drawRibbon(brainPts, {
+    coreColor:  Journey.lockState === 'reached' ? 'rgba(220, 255, 250, ALPHA)' : 'rgba(140, 240, 230, ALPHA)',
+    glowColor:  Journey.lockState === 'reached' ? 'rgba(180, 255, 245, ALPHA)' : 'rgba(60, 180, 200, ALPHA)',
+    outerColor: 'rgba(20, 80, 110, ALPHA)',
+    pulse: brainPulse,
+    overall,
+  });
+
+  // ---- Particle trails (small drifting points behind each ribbon) ----
+  drawRibbonParticles(brainPts, Journey.brainTrail, 'rgba(140, 240, 230, ALPHA)', overall, brainPulse);
+  drawRibbonParticles(targetPts, Journey.targetTrail, 'rgba(255, 215, 130, ALPHA)', overall, targetPulse);
+
+  ctx.restore();
+}
+
+function drawRibbon(points, opts) {
+  const { coreColor, glowColor, outerColor, pulse, overall } = opts;
+  const intensityNorm = effectiveIntensity / 100;
+  const pulseAmp = 0.5 + pulse * 0.5;  // 0.5..1.0
+  const baseAlpha = overall * (0.6 + intensityNorm * 0.4);
+
+  // Outer glow stroke
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = outerColor.replace('ALPHA', (0.18 * baseAlpha * pulseAmp).toFixed(3));
+  ctx.lineWidth = 18;
+  drawSplinePath(points);
+  ctx.stroke();
+
+  ctx.strokeStyle = glowColor.replace('ALPHA', (0.45 * baseAlpha * pulseAmp).toFixed(3));
+  ctx.lineWidth = 9;
+  drawSplinePath(points);
+  ctx.stroke();
+
+  ctx.strokeStyle = coreColor.replace('ALPHA', (0.85 * baseAlpha * pulseAmp).toFixed(3));
+  ctx.lineWidth = 3;
+  drawSplinePath(points);
+  ctx.stroke();
+
+  // Bright core highlight at peak pulse
+  if (pulse > 0.6) {
+    ctx.strokeStyle = `rgba(255, 255, 255, ${baseAlpha * (pulse - 0.6) * 1.2})`;
+    ctx.lineWidth = 1;
+    drawSplinePath(points);
+    ctx.stroke();
+  }
+}
+
+function drawSplinePath(points) {
+  ctx.beginPath();
+  if (points.length === 0) return;
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length - 1; i++) {
+    const xc = (points[i].x + points[i + 1].x) / 2;
+    const yc = (points[i].y + points[i + 1].y) / 2;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+  }
+  const last = points[points.length - 1];
+  ctx.lineTo(last.x, last.y);
+}
+
+function drawRibbonParticles(points, trail, colorTemplate, overall, pulse) {
+  // Spawn new particles along the ribbon
+  if (Math.random() < 0.4) {
+    const idx = Math.floor(Math.random() * points.length);
+    trail.push({
+      x: points[idx].x,
+      y: points[idx].y,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: (Math.random() - 0.5) * 0.6,
+      life: 1.0,
+    });
+  }
+  // Update + draw particles
+  for (let i = trail.length - 1; i >= 0; i--) {
+    const p = trail[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.012;
+    if (p.life <= 0) {
+      trail.splice(i, 1);
+      continue;
+    }
+    const a = (p.life * 0.6 * overall * (0.5 + pulse * 0.5)).toFixed(3);
+    ctx.fillStyle = colorTemplate.replace('ALPHA', a);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function applyDirective(d) {
   if (!d) return;
   // Frequency clamp — defense in depth; server also clamps
@@ -552,6 +818,31 @@ function applyDirective(d) {
     coherenceBoost = 1.0;
     inZone = true;
     setTimeout(() => { inZone = false; }, 4000);
+  }
+
+  // ---- Journey mode fields (cockpit toggle + autopilot state hooks) ----
+  // The runner / cockpit can include any combination of these fields:
+  //   journey_mode: true|false  -> toggle Journey ribbons on/off (smooth fade)
+  //   brain_hz:  number          -> client's current brain frequency
+  //   target_hz: number          -> protocol target (also tracked separately)
+  //   lock_state: string         -> no-lock / acquiring / locked / reached
+  // Update the local Journey state but never crash if a field is missing.
+  if (typeof d.journey_mode === 'boolean') {
+    Journey.enabled = d.journey_mode;
+  }
+  if (typeof d.brain_hz === 'number' && isFinite(d.brain_hz)) {
+    Journey.brainHz = d.brain_hz;
+  }
+  if (typeof d.target_hz === 'number' && isFinite(d.target_hz)) {
+    Journey.targetHz = d.target_hz;
+  }
+  if (typeof d.lock_state === 'string') {
+    Journey.lockState = d.lock_state;
+  }
+  // Track the orb frequency too so Journey can use it as a fallback if
+  // brain_hz hasn't arrived yet
+  if (typeof d.frequencyHz === 'number') {
+    Journey.orbHz = targetHz;
   }
 }
 
