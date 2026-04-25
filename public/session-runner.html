@@ -750,7 +750,7 @@
     document.getElementById('clientInfo').innerHTML = warn + `
       <div class="dossier-avatar">${c.first_name.charAt(0)}${c.last_name_initial}</div>
       <div class="kv"><span class="k">Name</span><span class="v">${c.first_name} ${c.last_name_initial}.</span></div>
-      <div class="kv"><span class="k">ID</span><span class="v">${c.client_external_id.substr(0,8)}</span></div>
+      <div class="kv"><span class="k">ID</span><span class="v">${(c.external_id || c.client_external_id || '').substring(0,8) || 'unknown'}</span></div>
       <div class="kv"><span class="k">Clearance</span><span class="v" style="color:var(--halo-green);">${medical}</span></div>
       <div class="kv"><span class="k">Consent</span><span class="v" style="color:var(--halo-green);">${consent ? 'signed' : 'missing'}</span></div>`;
   }
@@ -1182,9 +1182,11 @@
       CMS:  [60,  155],  DRL:  [180, 155],
     };
 
-    const sqBackdrop = document.getElementById('sqBackdrop');
-    const svgGroup   = document.getElementById('sqElectrodes');
-    const list       = document.getElementById('sqList');
+    // Lazy lookups — the popup HTML is rendered AFTER this script block runs,
+    // so we can't grab references at module-load time. Look them up on demand.
+    function $sqBackdrop() { return document.getElementById('sqBackdrop'); }
+    function $svgGroup()   { return document.getElementById('sqElectrodes'); }
+    function $list()       { return document.getElementById('sqList'); }
 
     let currentProfile = null;
     let inSession = false;          // true once operator clicks Proceed
@@ -1201,11 +1203,11 @@
         'Verifying ' + (profile.display_name || 'Headset') + ' Contact';
       document.getElementById('sqSub').textContent =
         profile.channel_count + ' channels · awaiting signal';
-      sqBackdrop.classList.add('show');
+      $sqBackdrop().classList.add('show');
     }
 
     function buildDiagram(profile) {
-      svgGroup.innerHTML = '';
+      $svgGroup().innerHTML = '';
       for (const name of profile.channel_map) {
         const pos = POSITIONS[name];
         if (!pos) continue;
@@ -1218,19 +1220,19 @@
         c.setAttribute('stroke', '#3a5678');
         c.setAttribute('stroke-width', '1');
         c.setAttribute('data-name', name);
-        svgGroup.appendChild(c);
+        $svgGroup().appendChild(c);
 
         const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         t.setAttribute('class', 'sq-electrode-label');
         t.setAttribute('x', pos[0]);
         t.setAttribute('y', pos[1] + 2);
         t.textContent = name;
-        svgGroup.appendChild(t);
+        $svgGroup().appendChild(t);
       }
     }
 
     function buildList(profile) {
-      list.innerHTML = '';
+      $list().innerHTML = '';
       for (const name of profile.channel_map) {
         const row = document.createElement('div');
         row.className = 'sq-row off';
@@ -1239,7 +1241,7 @@
           <div class="name">${name}</div>
           <div class="bar"><div class="fill" style="width:0%"></div></div>
           <div class="pct">—</div>`;
-        list.appendChild(row);
+        $list().appendChild(row);
       }
     }
 
@@ -1256,14 +1258,14 @@
       let counts = { good: 0, fair: 0, poor: 0, off: 0 };
       for (const ch of report.perChannel) {
         // Update the SVG electrode
-        const circle = svgGroup.querySelector(`circle[data-name="${ch.name}"]`);
+        const circle = $svgGroup().querySelector(`circle[data-name="${ch.name}"]`);
         if (circle) {
           circle.setAttribute('fill', FILL_BY_CONTACT[ch.contact] || FILL_BY_CONTACT.off);
           circle.setAttribute('stroke', ch.contact === 'good' ? '#00ff88' : '#3a5678');
           circle.setAttribute('r', ch.contact === 'good' ? 8 : 7);
         }
         // Update the list row
-        const row = list.querySelector(`.sq-row[data-name="${ch.name}"]`);
+        const row = $list().querySelector(`.sq-row[data-name="${ch.name}"]`);
         if (row) {
           row.className = 'sq-row ' + ch.contact;
           row.querySelector('.fill').style.width = (ch.quality_pct || 0) + '%';
@@ -1347,25 +1349,37 @@
       if (lastReport) updateStrip(lastReport);
     }
 
-    // Wire popup buttons
-    document.getElementById('sqBtnProceed').addEventListener('click', () => {
-      sqBackdrop.classList.remove('show');
-      inSession = true;
-      ensureStripContainer();
-      document.getElementById('btnStart').disabled = false;
-      log('ok', 'Sensor check passed · proceeding to session');
-    });
-    document.getElementById('sqBtnCancel').addEventListener('click', async () => {
-      sqBackdrop.classList.remove('show');
-      try { if (eegSource && eegSource.disconnect) await eegSource.disconnect(); } catch (e) {}
-      log('warn', 'Sensor check cancelled by operator');
-    });
-    document.getElementById('sqBtnRetry').addEventListener('click', () => {
-      // "Wait" just hides the popup so operator can adjust electrodes.
-      // Quality reports keep flowing; opening again later resumes.
-      sqBackdrop.classList.remove('show');
-      log('info', 'Sensor check paused · re-open via Connect Headband');
-    });
+    // Wire popup buttons. Deferred to DOMContentLoaded since the popup HTML
+    // is rendered AFTER this script block in the document. If the document is
+    // already past that point, fire immediately.
+    function wireSqButtons() {
+      const proceed = document.getElementById('sqBtnProceed');
+      const cancel  = document.getElementById('sqBtnCancel');
+      const retry   = document.getElementById('sqBtnRetry');
+      if (!proceed || !cancel || !retry) return;  // bail if popup not in DOM yet
+
+      proceed.addEventListener('click', () => {
+        $sqBackdrop().classList.remove('show');
+        inSession = true;
+        ensureStripContainer();
+        document.getElementById('btnStart').disabled = false;
+        log('ok', 'Sensor check passed · proceeding to session');
+      });
+      cancel.addEventListener('click', async () => {
+        $sqBackdrop().classList.remove('show');
+        try { if (eegSource && eegSource.disconnect) await eegSource.disconnect(); } catch (e) {}
+        log('warn', 'Sensor check cancelled by operator');
+      });
+      retry.addEventListener('click', () => {
+        $sqBackdrop().classList.remove('show');
+        log('info', 'Sensor check paused · re-open via Connect Headband');
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wireSqButtons);
+    } else {
+      wireSqButtons();
+    }
 
     return {
       openCheck: open,
