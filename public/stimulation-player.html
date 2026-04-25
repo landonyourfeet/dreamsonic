@@ -8,7 +8,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
     width: 100vw; height: 100vh;
-    background: #020108;
+    background: #000000;
     overflow: hidden;
     color: #d4baff;
     font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
@@ -179,12 +179,18 @@
 // =========================================================================
 
 // ---------- Safety constants (NOT directive-tunable) ----------
+// SELF-TEST MODE: Operator-only testing in controlled environment.
+// Luminance range opened from 0.25-0.75 to 0.08-0.92 for ~70% more
+// perceived contrast. Area cap raised from 30% to 45% for stronger
+// peripheral impact. Stays below full 0-1 strobe range to avoid the
+// most dangerous photoparoxysmal trigger zone, but you should screen
+// for photosensitive epilepsy before any client testing.
 const SAFETY = Object.freeze({
   MIN_FREQ_HZ:       2.0,
   MAX_FREQ_HZ:      14.0,
-  PULSE_AREA_CAP:    0.30,   // orb never exceeds 30% of screen area at peak
-  LUM_MIN:           0.25,   // pulse trough
-  LUM_MAX:           0.75,   // pulse peak (contrast capped)
+  PULSE_AREA_CAP:    0.45,   // increased from 0.30
+  LUM_MIN:           0.08,   // increased contrast - was 0.25
+  LUM_MAX:           0.92,   // increased contrast - was 0.75
   FADE_RAMP_MS:   10000,
 });
 
@@ -205,6 +211,10 @@ let copilotShare       = 100;        // %
 let targetBand         = 'alpha';
 let coherenceBoost     = 0;          // 0-1, bumped on coherence events, decays
 let inZone             = false;
+// Eye-closure detection — set by runner via directive when occipital alpha
+// rises sharply (eyes-closed signature). Triggers full-field brightness
+// boost to compensate for the ~10x light attenuation through closed eyelids.
+let eyeClosed          = false;
 
 // ---------- Canvas setup ----------
 const canvas = document.getElementById('scene');
@@ -244,12 +254,14 @@ function rebuildStarField() {
   }
 }
 
-// ---------- Nebula wisps (slow, not pulsing) ----------
+// ---------- Nebula wisps (very subtle, not pulsing) ----------
+// Reduced from full clouds to faint hints so the background reads
+// as deep black space rather than glowing nebulosity.
 const nebulae = [
-  { cx: 0.15, cy: 0.25, r: 0.18, color: [45, 30, 90], alpha: 0.55 },
-  { cx: 0.85, cy: 0.72, r: 0.22, color: [60, 35, 100], alpha: 0.5 },
-  { cx: 0.78, cy: 0.18, r: 0.13, color: [40, 25, 80], alpha: 0.45 },
-  { cx: 0.22, cy: 0.80, r: 0.14, color: [50, 30, 95], alpha: 0.5 },
+  { cx: 0.15, cy: 0.25, r: 0.18, color: [25, 16, 48], alpha: 0.18 },
+  { cx: 0.85, cy: 0.72, r: 0.22, color: [32, 18, 55], alpha: 0.16 },
+  { cx: 0.78, cy: 0.18, r: 0.13, color: [22, 14, 45], alpha: 0.14 },
+  { cx: 0.22, cy: 0.80, r: 0.14, color: [28, 16, 50], alpha: 0.16 },
 ];
 
 // ---------- Orbital particles ----------
@@ -276,8 +288,31 @@ function render(now) {
   const rampProgress = Math.min(1, (now - rampStartTime) / rampDurationMs);
   effectiveIntensity = rampStartValue + (targetIntensity - rampStartValue) * rampProgress;
 
-  // Clear to deep void
-  ctx.fillStyle = '#020108';
+  // ---- GLOBAL PULSE — drives the full-field photic stimulation ----
+  // The whole viewport luminance swings at the entrainment frequency.
+  // This is what real clinical photic devices do (Mind Alive, Roxiva,
+  // Lumatron) — they fill the entire field of view with light. A small
+  // orb on a black background can't reach the retina through closed
+  // eyelids; a full-field pulse can.
+  const hzGlobal = Math.max(SAFETY.MIN_FREQ_HZ, Math.min(SAFETY.MAX_FREQ_HZ, targetHz));
+  const phaseGlobal = (now / 1000) * hzGlobal * Math.PI * 2;
+  const sineGlobal = (Math.sin(phaseGlobal) + 1) / 2;  // 0..1
+  // Sharp pulse curve - cubic easing biases toward dark, with bright peaks
+  const pulseSharp = Math.pow(sineGlobal, 2.2);
+  const intNorm = effectiveIntensity / 100;
+  // Eye-closure boost: when client closes eyes (detected via runner),
+  // increase peak brightness to compensate for eyelid attenuation.
+  const closedEyeBoost = eyeClosed ? 1.35 : 1.0;
+  const pulseFieldStrength = pulseSharp * intNorm * closedEyeBoost;
+
+  // Field background — pulses from pure black (trough) up to a deep
+  // saturated purple at peaks. The base color is dark enough to feel
+  // like space at the trough but bright enough at peaks to drive
+  // photic entrainment across the whole retina.
+  const fieldR = Math.round(pulseFieldStrength * 95);
+  const fieldG = Math.round(pulseFieldStrength * 55);
+  const fieldB = Math.round(pulseFieldStrength * 175);
+  ctx.fillStyle = `rgb(${fieldR},${fieldG},${fieldB})`;
   ctx.fillRect(0, 0, W, H);
 
   // Draw nebula wisps (static, just slow breathing)
@@ -289,7 +324,7 @@ function render(now) {
   // Draw orbital rings (the autopilot layer - rotate at fixed speeds)
   drawOrbits(now);
 
-  // Draw the ORB (the only element that pulses at target Hz)
+  // Draw the ORB (focal point - now sits within the pulsing field)
   drawOrb(now);
 
   // Draw the Journey ribbons overlay (toggled on/off via cockpit directive).
@@ -304,15 +339,17 @@ function drawNebulae(now) {
     const breath = 0.85 + 0.15 * Math.sin(now / 6000 + n.cx * 10);
     const x = n.cx * W, y = n.cy * H;
     const r = n.r * Math.min(W, H) * breath;
-    // Manual radial falloff using concentric fills (no filter = no streaming flash)
-    for (let i = 0; i < 4; i++) {
-      const f = 1 - i / 4;
-      const alpha = n.alpha * f * f * 0.4;
-      ctx.fillStyle = `rgba(${n.color[0]},${n.color[1]},${n.color[2]},${alpha})`;
-      ctx.beginPath();
-      ctx.arc(x, y, r * f, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Smooth radial gradient — fades cleanly to transparent so the
+    // nebula reads as diffuse atmosphere rather than concentric rings.
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const c = n.color;
+    grad.addColorStop(0,    `rgba(${c[0]},${c[1]},${c[2]},${n.alpha * 0.6})`);
+    grad.addColorStop(0.45, `rgba(${c[0]},${c[1]},${c[2]},${n.alpha * 0.22})`);
+    grad.addColorStop(1,    `rgba(${c[0]},${c[1]},${c[2]},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -378,9 +415,11 @@ function drawOrb(now) {
   const pulseLum = lumMin + sineNorm * lumRange * intNorm
                  + (1 - intNorm) * ((lumMin + lumMax) / 2);
 
-  // --- ORB SIZE (capped at 30% of screen area) ---
+  // --- ORB SIZE (capped at SAFETY.PULSE_AREA_CAP of screen area) ---
   const maxRadius = Math.sqrt(W * H * SAFETY.PULSE_AREA_CAP / Math.PI);
-  const baseRadius = Math.min(W, H) * 0.06;
+  // Base radius doubled from 0.06 to 0.12 - the orb now occupies a
+  // commanding center of the field rather than a small dot.
+  const baseRadius = Math.min(W, H) * 0.12;
   const zoneBonus = inZone ? 1.25 : 1.0;
   const coherenceBonus = 1 + coherenceBoost * 0.35;
   let orbRadius = baseRadius * zoneBonus * coherenceBonus;
@@ -390,64 +429,64 @@ function drawOrb(now) {
   if (coherenceBoost > 0) coherenceBoost = Math.max(0, coherenceBoost - 0.003);
 
   // --- DRAW ORB ---
-  // Pulse contrast amplifier within safety caps - drives more dramatic
-  // visual swing while keeping luminance in the [LUM_MIN, LUM_MAX] band.
-  // Quadratic easing on the pulse phase makes peaks feel more like flashes.
-  const pulseEased = pulseLum * pulseLum / (pulseLum + 0.001) * 1.15;
-  const pulseImpact = Math.min(1, pulseEased * intNorm + (1 - intNorm) * 0.5);
+  // Sharper pulse curve - cubic easing makes peaks feel like flashes
+  // rather than smooth swells. Combined with the wider luminance range
+  // (0.08 to 0.92 in self-test mode) this drives strong visual impact.
+  const pulseEased = Math.pow(pulseLum, 1.5) * 1.2;
+  const pulseImpact = Math.min(1, pulseEased * intNorm + (1 - intNorm) * 0.4);
 
-  // Peripheral ambient glow - large soft pulse covering more of the field
-  // of view at lower opacity. Stays inside the area cap because it's diffuse.
-  const ambientRadius = Math.min(W, H) * 0.55;
+  // Full-viewport peripheral glow - the entire screen subtly pulses
+  // with the entrainment frequency, not just the central orb. This is
+  // what gives the photic stimulation the feeling of immersive light.
+  const ambientRadius = Math.max(W, H) * 0.85;
   const ambientGrad = ctx.createRadialGradient(cx, cy, orbRadius * 1.5, cx, cy, ambientRadius);
-  ambientGrad.addColorStop(0, `rgba(86, 55, 201, ${0.32 * pulseImpact})`);
-  ambientGrad.addColorStop(0.4, `rgba(58, 39, 160, ${0.18 * pulseImpact})`);
-  ambientGrad.addColorStop(1, 'rgba(20, 12, 50, 0)');
+  ambientGrad.addColorStop(0,    `rgba(110, 70, 230, ${0.55 * pulseImpact})`);
+  ambientGrad.addColorStop(0.25, `rgba(82, 50, 195, ${0.38 * pulseImpact})`);
+  ambientGrad.addColorStop(0.55, `rgba(50, 30, 140, ${0.20 * pulseImpact})`);
+  ambientGrad.addColorStop(1,    'rgba(0, 0, 0, 0)');
   ctx.fillStyle = ambientGrad;
-  ctx.beginPath();
-  ctx.arc(cx, cy, ambientRadius, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillRect(0, 0, W, H);
 
-  // Outermost halo (largest, dimmest)
-  const haloRadius = orbRadius * 3.6;
-  ctx.fillStyle = `rgba(42, 26, 106, ${0.28 * pulseImpact})`;
+  // Outermost halo (largest, brighter than before)
+  const haloRadius = orbRadius * 4.2;
+  ctx.fillStyle = `rgba(60, 38, 145, ${0.42 * pulseImpact})`;
   ctx.beginPath();
   ctx.arc(cx, cy, haloRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(58, 39, 160, ${0.42 * pulseImpact})`;
-  ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 2.7, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.fillStyle = `rgba(86, 55, 201, ${0.58 * pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 2.0, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 3.2, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(122, 86, 232, ${0.78 * pulseImpact})`;
+  ctx.fillStyle = `rgba(122, 86, 232, ${0.74 * pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 1.5, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 2.3, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(180, 145, 255, ${0.92 * pulseImpact})`;
+  ctx.fillStyle = `rgba(155, 115, 250, ${0.90 * pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 1.7, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(220, 196, 255, ${pulseImpact})`;
+  ctx.fillStyle = `rgba(195, 160, 255, ${pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 0.7, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 1.15, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(245, 232, 255, ${pulseImpact})`;
+  ctx.fillStyle = `rgba(225, 200, 255, ${pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 0.44, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 0.78, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(245, 235, 255, ${pulseImpact})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, orbRadius * 0.48, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = `rgba(255, 255, 255, ${pulseImpact})`;
   ctx.beginPath();
-  ctx.arc(cx, cy, orbRadius * 0.22, 0, Math.PI * 2);
+  ctx.arc(cx, cy, orbRadius * 0.25, 0, Math.PI * 2);
   ctx.fill();
 
   // --- FOUR-POINT STAR (coherence bloom, rare/spiritual) ---
@@ -838,6 +877,11 @@ function applyDirective(d) {
   }
   if (typeof d.lock_state === 'string') {
     Journey.lockState = d.lock_state;
+  }
+  // Eye-closure detection from runner — when occipital alpha rises sharply,
+  // runner sets this true so we boost brightness to penetrate closed eyelids.
+  if (typeof d.eye_closed === 'boolean') {
+    eyeClosed = d.eye_closed;
   }
   // Track the orb frequency too so Journey can use it as a fallback if
   // brain_hz hasn't arrived yet
