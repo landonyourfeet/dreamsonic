@@ -1148,6 +1148,63 @@
   // For devices that send precomputed band powers (MindWave Mobile BLE).
   // Updates the band HUD directly without needing local FFT, and feeds the
   // Match & Migrate engine pipeline.
+  // Eye-closure detection state. Tracks a rolling alpha baseline; a sharp
+  // rise (Berger effect) signals eye closure. The classic Berger finding:
+  // alpha power roughly doubles within 1-2 seconds of eyes closing in
+  // healthy adults. Works on Fp1 too because frontal sites pick up
+  // posterior alpha via volume conduction.
+  let eyeClosureState = {
+    alphaBaseline: null,
+    alphaSamples: [],     // rolling buffer of recent alpha values
+    closed: false,
+    lastTransition: 0,
+  };
+
+  function detectEyeClosure(bands) {
+    const alpha = (bands.alpha || 0) + (bands.smr || 0) * 0.5;  // alpha-band weighted
+    const now = Date.now();
+    const bufferSize = 30;  // ~10 seconds at 3Hz update rate
+
+    eyeClosureState.alphaSamples.push(alpha);
+    if (eyeClosureState.alphaSamples.length > bufferSize) {
+      eyeClosureState.alphaSamples.shift();
+    }
+    if (eyeClosureState.alphaSamples.length < 10) return;  // need warm-up
+
+    // Baseline = median of last 30 samples (excludes spikes both ways)
+    const sorted = [...eyeClosureState.alphaSamples].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+
+    // Update baseline slowly (drift-tolerant)
+    if (eyeClosureState.alphaBaseline === null) {
+      eyeClosureState.alphaBaseline = median;
+    } else {
+      eyeClosureState.alphaBaseline = 0.95 * eyeClosureState.alphaBaseline + 0.05 * median;
+    }
+
+    // Eye closure = current alpha is >1.8x the rolling baseline (Berger effect)
+    // Eye opening = alpha drops back toward baseline (within 1.2x)
+    const ratio = alpha / Math.max(1, eyeClosureState.alphaBaseline);
+    const debounceMs = 2000;  // require 2s between transitions
+    if (now - eyeClosureState.lastTransition < debounceMs) return;
+
+    if (!eyeClosureState.closed && ratio > 1.8) {
+      eyeClosureState.closed = true;
+      eyeClosureState.lastTransition = now;
+      log('info', 'EYE CLOSURE DETECTED · alpha ' + ratio.toFixed(1) + 'x baseline · brightness boost active');
+      sendDirective({ eye_closed: true, reason: 'alpha rise detected' });
+      logMMEvent && logMMEvent('eye_closure', null, autopilotOrbHz, null,
+        autopilotState, { alpha_ratio: ratio });
+    } else if (eyeClosureState.closed && ratio < 1.2) {
+      eyeClosureState.closed = false;
+      eyeClosureState.lastTransition = now;
+      log('info', 'EYE OPEN · alpha returned to baseline · normal brightness');
+      sendDirective({ eye_closed: false, reason: 'alpha returned to baseline' });
+      logMMEvent && logMMEvent('eye_open', null, autopilotOrbHz, null,
+        autopilotState, { alpha_ratio: ratio });
+    }
+  }
+
   function onBandPowersReport(evt) {
     if (!evt || !evt.bands) return;
     const bands = evt.bands;
@@ -1157,6 +1214,8 @@
         phaseBandAccum[b].sum += (bands[b] || 0);
         phaseBandAccum[b].n += 1;
       }
+      // Eye-closure detection only runs during active session phases
+      detectEyeClosure(bands);
     }
     // Push the brain's current dominant frequency into the Match & Migrate
     // tracker so the graph + lock state can update.
