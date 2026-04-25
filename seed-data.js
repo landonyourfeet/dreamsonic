@@ -49,6 +49,19 @@ const DEFAULT_EEG_DEVICES = [
     driver_module: 'epoc-bridge',
     notes: '14-channel saline-electrode EEG. Full bilateral frontal coverage enables true Frontal Alpha Asymmetry. Requires the EPOC bridge program running on the operator Mac (see /epoc-bridge/README.md).',
   },
+  {
+    code: 'myndband',
+    display_name: 'MyndPlay MyndBand',
+    vendor: 'MyndPlay',
+    channel_count: 1,
+    channel_map: ['Fp1'],
+    sample_rate_hz: 512,
+    max_safe_amplitude_uv: 800,
+    frontal_available: true,
+    connection_type: 'bluetooth',
+    driver_module: 'myndplay-bridge',
+    notes: 'Single-channel BLE forehead band at Fp1. Supports SASI mood metric, alpha/theta tracking, entrainment monitoring. Cannot compute bilateral asymmetry. Requires the MyndPlay bridge program running on the operator Mac (see /myndplay-bridge/README.md).',
+  },
   // Future devices — uncomment when hardware arrives and SDK drivers are wired.
   // {
   //   code: 'muse2',
