@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -117,14 +118,19 @@
     padding: 16px 20px 20px;
     display: flex; flex-direction: column;
     gap: 14px; min-height: 0;
+    overflow-y: auto;
   }
+  .viz-area::-webkit-scrollbar { width: 4px; }
+  .viz-area::-webkit-scrollbar-track { background: var(--halo-deep); }
+  .viz-area::-webkit-scrollbar-thumb { background: var(--halo-line); }
   .waveform-box {
-    flex: 1;
+    flex: 1 1 auto;
     background: var(--halo-void);
     border: 1px solid var(--halo-line);
     position: relative;
     overflow: hidden;
-    min-height: 140px;
+    min-height: 180px;
+    max-height: 280px;
   }
   .waveform-box::before, .waveform-box::after,
   .waveform-box > .corners::before, .waveform-box > .corners::after {
@@ -167,6 +173,7 @@
 
   /* Band HUD */
   .bands {
+    flex-shrink: 0;
     display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
     padding: 14px 16px;
     background: var(--halo-panel);
@@ -343,6 +350,7 @@
      Lines color-shift based on lock state (red NO LOCK → amber ACQUIRING
      → green LOCKED → white TARGET REACHED). */
   .mm-box {
+    flex-shrink: 0;
     margin-top: 14px;
     padding: 12px 14px 10px;
     background: var(--halo-deep);
