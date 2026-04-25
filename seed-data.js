@@ -155,6 +155,17 @@ const DEFAULT_PROTOCOLS = [
     audio_type: 'isochronic',
     description_wellness: 'Low-alpha training as a guided entry for meditation practice.',
   },
+  {
+    code: 'HAPPY_LB',
+    name: 'Happy',
+    target_band: 'smr',
+    target_frequency_hz: 13.50,
+    max_freq_shift: 4.0,
+    duration_minutes: 20,
+    light_intensity_pct: 50,
+    audio_type: 'isochronic',
+    description_wellness: 'Uplift protocol — meets the brain wherever it is and migrates upward into low-beta/SMR. Associated with active engagement, alert positive mood, focused attention. Capped at 4 Hz shift per session for safety.',
+  },
 ];
 
 const DEFAULT_VOCAB = [
@@ -205,11 +216,12 @@ async function init() {
     await query(
       `INSERT INTO wellness_protocols
         (code, name, target_band, target_frequency_hz, duration_minutes,
-         light_intensity_pct, audio_type, description_wellness)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         light_intensity_pct, audio_type, description_wellness, max_freq_shift)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (code) DO NOTHING`,
       [p.code, p.name, p.target_band, p.target_frequency_hz, p.duration_minutes,
-       p.light_intensity_pct, p.audio_type, p.description_wellness]
+       p.light_intensity_pct, p.audio_type, p.description_wellness,
+       p.max_freq_shift != null ? p.max_freq_shift : 4.0]
     );
   }
 
