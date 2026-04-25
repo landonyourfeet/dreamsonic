@@ -1520,6 +1520,7 @@
 
   // Autopilot state machine
   let autopilotOrbHz = null;
+  let autopilotSessionTargetHz = null;  // personalized per-session destination
   let autopilotState = 'idle';        // idle / matching / locked / migrating / target_reached
   let autopilotLockProgress = 0;       // # consecutive readings within lock threshold
   let autopilotLastMigrationT = 0;     // ms when we last took a migration step
@@ -1584,14 +1585,15 @@
         logMMEvent('autopilot_disengaged', null, autopilotOrbHz, null, autopilotState);
         autopilotState = 'idle';
         autopilotLockProgress = 0;
+        autopilotSessionTargetHz = null;  // will be recomputed if stimulus restarts
       }
       MatchMigrate.setEngineAction('STANDING BY');
       return;
     }
     if (!session) return;
 
-    const targetHz = Number(session.target_frequency_hz);
-    if (!isFinite(targetHz)) return;
+    const protocolTargetHz = Number(session.target_frequency_hz);
+    if (!isFinite(protocolTargetHz)) return;
     const brainHz = currentBrainHzFromMM();
     if (brainHz == null) {
       MatchMigrate.setEngineAction('AWAITING SIGNAL', 'amber');
@@ -1601,14 +1603,56 @@
     const now = Date.now();
     autopilotLastTickT = now;
 
-    // Engagement: first time we see brain data during stimulus
+    // Engagement: first time we see brain data during stimulus.
+    // CORE PRINCIPLE: every session starts where the brain is, regardless
+    // of which protocol was chosen. The protocol provides DIRECTION, not
+    // starting point. Then we compute the actual session target as the
+    // signed migration from baseline toward the protocol target, capped
+    // at the protocol's max_freq_shift safety limit.
     if (autopilotState === 'idle') {
-      autopilotOrbHz = brainHz;  // Start orb where brain is — no abrupt jump
-      autopilotState = 'matching';
-      autopilotLockProgress = 0;
-      logMMEvent('autopilot_engaged', brainHz, autopilotOrbHz, targetHz, 'matching',
-        { initial_brain_hz: brainHz, target_hz: targetHz });
+      autopilotOrbHz = brainHz;
+      // Compute personalized session target
+      const maxShift = Number(session.max_freq_shift) > 0
+        ? Number(session.max_freq_shift) : 4.0;
+      const direction = Math.sign(protocolTargetHz - brainHz);
+      const requestedShift = Math.abs(protocolTargetHz - brainHz);
+      const cappedShift = Math.min(requestedShift, maxShift);
+      autopilotSessionTargetHz = brainHz + direction * cappedShift;
+      // Hard safety clamp
+      autopilotSessionTargetHz = Math.max(2, Math.min(14, autopilotSessionTargetHz));
+      // Update the Match & Migrate graph's purple line to the personalized target
+      MatchMigrate.setTargetHz(autopilotSessionTargetHz);
+      // Skip the 'matching' state — orb is at brain by construction
+      autopilotState = 'locked';
+      autopilotLockProgress = MM_LOCK_CONFIRM_TICKS;
+      autopilotLockEstablishedAt = now;
+      autopilotLastMigrationT = now;
+
+      // Persist baseline + computed target to the session record
+      fetch(`/api/sessions/${session.id}/autopilot-init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseline_brain_hz: Number(brainHz.toFixed(2)),
+          computed_target_hz: Number(autopilotSessionTargetHz.toFixed(2)),
+        }),
+      }).catch(() => {});
+
+      logMMEvent('autopilot_engaged', brainHz, autopilotOrbHz, autopilotSessionTargetHz,
+        'locked', {
+          baseline_brain_hz: brainHz,
+          protocol_target_hz: protocolTargetHz,
+          computed_target_hz: autopilotSessionTargetHz,
+          max_freq_shift: maxShift,
+          actual_shift: cappedShift,
+          direction: direction > 0 ? 'up' : direction < 0 ? 'down' : 'hold',
+        });
+      log('ok', `AUTOPILOT · baseline ${brainHz.toFixed(1)}Hz → target ${autopilotSessionTargetHz.toFixed(1)}Hz (${direction > 0 ? '+' : ''}${(direction*cappedShift).toFixed(1)}Hz, cap ${maxShift}Hz)`);
     }
+
+    // Use personalized target for migration
+    const targetHz = autopilotSessionTargetHz != null
+      ? autopilotSessionTargetHz : protocolTargetHz;
 
     const matchGap = brainHz - autopilotOrbHz;
     const targetGap = targetHz - brainHz;
