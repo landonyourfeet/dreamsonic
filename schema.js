@@ -206,6 +206,55 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_wellness_attention_session
      ON wellness_attention_assessments(session_id) WHERE session_id IS NOT NULL`,
 
+  // Match-and-Migrate event log — raw event stream from the autopilot.
+  // Every state transition during a session creates a row. Aggregates
+  // computed after session end go into wellness_match_migrate_summaries.
+  `CREATE TABLE IF NOT EXISTS wellness_match_migrate_events (
+    id              SERIAL PRIMARY KEY,
+    session_id      INTEGER NOT NULL REFERENCES wellness_sessions(id) ON DELETE CASCADE,
+    client_id       INTEGER NOT NULL REFERENCES wellness_clients(id) ON DELETE CASCADE,
+    event_type      TEXT NOT NULL CHECK (event_type IN (
+      'lock_established', 'lock_lost', 'migration_step',
+      'migration_step_failed', 'target_reached', 'session_started',
+      'session_ended', 'autopilot_engaged', 'autopilot_disengaged'
+    )),
+    occurred_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    brain_hz        NUMERIC(5,2),
+    orb_hz          NUMERIC(5,2),
+    target_hz       NUMERIC(5,2),
+    lock_state      TEXT,
+    metadata        JSONB
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_mm_events_session
+     ON wellness_match_migrate_events(session_id, occurred_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_mm_events_client
+     ON wellness_match_migrate_events(client_id, occurred_at DESC)`,
+
+  // Per-session summary — computed after session_ended event arrives.
+  // Captures the headline metrics for this session at a glance.
+  `CREATE TABLE IF NOT EXISTS wellness_match_migrate_summaries (
+    id                          SERIAL PRIMARY KEY,
+    session_id                  INTEGER NOT NULL UNIQUE REFERENCES wellness_sessions(id) ON DELETE CASCADE,
+    client_id                   INTEGER NOT NULL REFERENCES wellness_clients(id) ON DELETE CASCADE,
+    computed_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    time_to_first_lock_sec      NUMERIC(7,1),
+    total_locked_sec            NUMERIC(7,1),
+    total_session_sec           NUMERIC(7,1),
+    locked_ratio                NUMERIC(5,3),
+    migrations_attempted        INTEGER,
+    migrations_successful       INTEGER,
+    largest_successful_step_hz  NUMERIC(4,2),
+    largest_brain_deviation_hz  NUMERIC(4,2),
+    average_tuning_bandwidth_hz NUMERIC(4,2),
+    target_reached              BOOLEAN,
+    target_reached_at_sec       NUMERIC(7,1),
+    starting_brain_hz           NUMERIC(5,2),
+    final_brain_hz              NUMERIC(5,2),
+    target_hz                   NUMERIC(5,2)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_mm_summaries_client
+     ON wellness_match_migrate_summaries(client_id, computed_at DESC)`,
+
   // Late-added columns — idempotent, safe on every boot.
   // eeg_device_code ties a session to a specific device in the registry.
   // Existing sessions predating this column keep their legacy eeg_source text.
