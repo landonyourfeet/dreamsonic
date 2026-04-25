@@ -2448,6 +2448,14 @@
 
     // Decide what guidance text to show the operator based on report state
     function deriveTip(report) {
+      // Highest priority: bridge has reported the headset has gone silent
+      // (no BLE notifications for 3+ seconds). This is more authoritative
+      // than the per-channel contact bytes which could be stale.
+      if (report.headset_live === false) {
+        return { cls: 'warn', label: 'HEADSET OFFLINE',
+          text: 'No data flowing from the headset. Power on the device, verify Bluetooth is connected, and check the bridge program is running.' };
+      }
+
       const refs = report.perChannel.filter(c => isReference(c.name));
       const nonRefs = report.perChannel.filter(c => !isReference(c.name));
       const refsBad = refs.filter(c => c.contact === 'off' || c.contact === 'poor');
@@ -2546,13 +2554,19 @@
 
       // Gate logic — must include refs being OK + 75% of all channels usable.
       // Reference electrodes being bad is a HARD gate.
+      // Headset liveness is an EVEN HARDER gate - if no data is flowing,
+      // contact reports are meaningless cached values.
       const refs = report.perChannel.filter(c => isReference(c.name));
       const refsOk = refs.length === 0
         ? true
         : refs.every(c => c.contact === 'good' || c.contact === 'fair');
       const proceed = document.getElementById('sqBtnProceed');
       const gateMsg = document.getElementById('sqGateMsg');
-      if (refsOk && ratio >= 0.75) {
+      if (report.headset_live === false) {
+        proceed.disabled = true;
+        gateMsg.className = 'sq-gate-msg warn';
+        gateMsg.textContent = `BLOCKED · headset offline · power on device`;
+      } else if (refsOk && ratio >= 0.75) {
         proceed.disabled = false;
         gateMsg.className = 'sq-gate-msg ready';
         gateMsg.textContent = `READY · ${usable}/${total} channels · references OK`;
