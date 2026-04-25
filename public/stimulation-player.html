@@ -1059,11 +1059,13 @@ uniform float uTime;
 uniform float uPulse;       // 0..1 entrainment pulse, sharp peaks
 uniform float uIntensity;   // 0..1 effective session intensity
 uniform float uEyeBoost;    // 1.0 normal, 1.35 eyes closed
-uniform vec3  uCoreColor;   // ionization core color (changes with band)
-uniform vec3  uOuterColor;  // outer gas color
-uniform vec3  uFilamentColor; // bright filament color
+uniform vec3  uCoreColor;
+uniform vec3  uOuterColor;
+uniform vec3  uFilamentColor;
+uniform float uShootSeed;   // shooting star event seed
+uniform float uShootProgress; // 0..1 progress of current shooting star
 
-// 3D hash and noise (Inigo Quilez style)
+// 3D hash + noise
 vec3 hash3(vec3 p) {
   p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
            dot(p, vec3(269.5, 183.3, 246.1)),
@@ -1087,16 +1089,14 @@ float noise3d(vec3 p) {
   float nx10 = mix(n010, n110, f.x);
   float nx01 = mix(n001, n101, f.x);
   float nx11 = mix(n011, n111, f.x);
-  float nxy0 = mix(nx00, nx10, f.y);
-  float nxy1 = mix(nx01, nx11, f.y);
-  return mix(nxy0, nxy1, f.z) + 0.5;
+  return mix(mix(nx00, nx10, f.y), mix(nx01, nx11, f.y), f.z) + 0.5;
 }
 
-// Multi-octave fractal noise - the gas density field
+// 4-octave fbm (was 6 - reduced for speed; nebula is smaller so we have headroom)
 float fbm(vec3 p) {
   float v = 0.0;
   float a = 0.5;
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 4; i++) {
     v += a * noise3d(p);
     p = p * 2.05 + vec3(1.7, 9.2, 4.3);
     a *= 0.5;
@@ -1104,152 +1104,173 @@ float fbm(vec3 p) {
   return v;
 }
 
-// Density function - returns gas density at point p in 3D space.
-// This is what makes it volumetric. We sample density along the ray,
-// accumulating color and opacity to fake true volumetric rendering.
+// Density - nebula is centered and ~3 units across, leaves rest of space empty
 float density(vec3 p, float t) {
-  // Slow drift through the nebula
   vec3 q = p;
-  q.x += t * 0.03;
-  q.y -= t * 0.02;
-  q.z += sin(t * 0.04) * 0.4;
+  q.x += t * 0.025;
+  q.y -= t * 0.018;
 
-  // Outer falloff - the nebula has an extent
   float r = length(p);
-  float falloff = smoothstep(8.0, 1.5, r);
+  // Tight outer bound - nebula stays compact
+  float falloff = smoothstep(2.8, 0.8, r);
+  if (falloff <= 0.0) return 0.0;
 
-  // Core has higher density that pulses
-  float coreFalloff = smoothstep(3.5, 0.0, r);
-  float corePulse = 1.0 + uPulse * 1.4;
+  // Core has higher density that pulses with entrainment
+  float coreFalloff = smoothstep(1.4, 0.0, r);
+  float corePulse = 1.0 + uPulse * 1.6;
 
-  // The gas structure
-  float n = fbm(q * 0.5);
+  float n = fbm(q * 0.7);
+  float filament = fbm(q * 1.6 + vec3(7.3, 2.1, 5.6));
 
-  // Filaments via stretched secondary noise
-  float filament = fbm(q * 1.4 + vec3(7.3, 2.1, 5.6));
-
-  // Combine density layers
-  float d = falloff * (n - 0.42) * 1.6;
-  d += coreFalloff * 0.55 * corePulse;
-  d += falloff * filament * filament * 0.4;
+  float d = falloff * (n - 0.40) * 1.8;
+  d += coreFalloff * 0.70 * corePulse;
+  d += falloff * filament * filament * 0.5;
 
   return max(0.0, d);
 }
 
-// Ray-march through the volume, accumulating color along the way
+// Ray-march - 28 steps with adaptive stepping (was 56 fixed)
 vec4 marchNebula(vec3 ro, vec3 rd, float t) {
   vec4 col = vec4(0.0);
-  float depth = 0.0;
-  // March from near to far, accumulating into transparent buffer
-  // Step count: more steps = better quality, slower frame
-  const int STEPS = 56;
-  float stepLen = 0.22;
+  float depth = 4.0;  // start near where the nebula begins
+  // Step length adapts: smaller in dense areas for quality, larger when empty
+  float stepLen = 0.18;
+  const int STEPS = 32;
 
   for (int i = 0; i < STEPS; i++) {
-    if (col.a > 0.97) break;  // fully opaque, no need to continue
+    if (col.a > 0.96) break;
+    if (depth > 9.0) break;  // tight far-plane since nebula is small
 
     vec3 pos = ro + rd * depth;
     float d = density(pos, t);
 
     if (d > 0.01) {
       float r = length(pos);
-
-      // Color the gas based on distance from core - hot/ionized at center,
-      // cooler outer envelope. This is what makes nebulae look real -
-      // the inner gas is excited and emits a different color than outer.
-      float coreNess = smoothstep(3.5, 0.0, r);
+      float coreNess = smoothstep(1.4, 0.0, r);
       vec3 hotColor = mix(uOuterColor, uCoreColor, coreNess);
 
-      // Filament highlights - hot orange/pink streaks where density spikes
       float filamentMask = smoothstep(0.4, 0.9, d);
       vec3 sample = mix(hotColor, uFilamentColor, filamentMask * 0.6);
+      sample *= 1.0 + coreNess * 1.6 * (0.55 + uPulse * 0.7);
 
-      // Self-illumination boost at the core
-      sample *= 1.0 + coreNess * 1.5 * (0.6 + uPulse * 0.6);
-
-      // Density into alpha
-      float alpha = d * stepLen * 1.8;
+      float alpha = d * stepLen * 2.0;
       alpha = clamp(alpha, 0.0, 1.0);
-
-      // Front-to-back accumulation
       col.rgb += sample * alpha * (1.0 - col.a);
       col.a += alpha * (1.0 - col.a);
+      // Smaller steps when in density (more detail in clouds)
+      stepLen = 0.12;
+    } else {
+      // Empty space - take longer leaps
+      stepLen = 0.30;
     }
-
     depth += stepLen;
-    if (depth > 18.0) break;
   }
 
   return col;
 }
 
-// Hash for star field
-float hash(vec2 p) {
+float hash21(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
-// Background star field (independent of nebula march)
+// Multi-layer star field
 vec3 stars(vec2 uv) {
   vec3 col = vec3(0.0);
   for (int layer = 0; layer < 3; layer++) {
-    float scale = 80.0 + float(layer) * 60.0;
+    float scale = 60.0 + float(layer) * 90.0;
     vec2 p = uv * scale;
     vec2 i = floor(p);
     vec2 f = fract(p);
-    float h = hash(i);
-    if (h > 0.992) {
-      float twinkle = 0.7 + 0.3 * sin(uTime * (1.5 + h * 4.0) + h * 12.0);
+    float h = hash21(i);
+    if (h > 0.988) {
+      float twinkle = 0.65 + 0.35 * sin(uTime * (1.5 + h * 4.0) + h * 12.0);
       float d = length(f - 0.5);
-      float bright = smoothstep(0.05, 0.0, d) * twinkle;
-      // Color variety - mostly white-blue, occasionally warm
-      vec3 starCol = (h > 0.997) ? vec3(1.0, 0.85, 0.7) : vec3(0.92, 0.95, 1.0);
-      col += starCol * bright * (0.6 - float(layer) * 0.15);
+      float bright = smoothstep(0.06, 0.0, d) * twinkle;
+      vec3 starCol = (h > 0.997) ? vec3(1.0, 0.85, 0.7)
+                                  : vec3(0.92, 0.95, 1.0);
+      col += starCol * bright * (0.7 - float(layer) * 0.18);
     }
   }
   return col;
 }
 
+// Shooting star - traverses the screen in a streak when uShootProgress is 0..1.
+// Direction + start position deterministic from uShootSeed.
+vec3 shootingStar(vec2 uv) {
+  if (uShootProgress <= 0.0 || uShootProgress >= 1.0) return vec3(0.0);
+  // Random angle and starting offset from seed
+  float angle = hash21(vec2(uShootSeed, 7.3)) * 6.28318;
+  vec2 dir = vec2(cos(angle), sin(angle));
+  // Starting point offset from screen center
+  vec2 startOff = (vec2(hash21(vec2(uShootSeed, 11.1)),
+                        hash21(vec2(uShootSeed, 23.7))) - 0.5) * 1.6;
+  // Current head position based on progress (travels ~2.4 units)
+  vec2 head = startOff + dir * (uShootProgress * 2.4 - 0.6);
+
+  // Distance from current pixel to the head
+  vec2 toPixel = uv - head;
+  // Distance projected along the trail (negative = behind head)
+  float along = dot(toPixel, dir);
+  // Perpendicular distance from the trail line
+  float across = abs(dot(toPixel, vec2(-dir.y, dir.x)));
+
+  // Trail extends behind the head
+  float trailLen = 0.45;
+  if (along > 0.05 || along < -trailLen) return vec3(0.0);
+  if (across > 0.012) return vec3(0.0);
+
+  // Bright head, fading trail
+  float trailFade = smoothstep(-trailLen, 0.0, along);
+  float lateralFade = smoothstep(0.012, 0.0, across);
+  // Whole shooting star fades out near the end of its life
+  float lifeFade = smoothstep(1.0, 0.85, uShootProgress)
+                 * smoothstep(0.0, 0.15, uShootProgress);
+
+  float bright = trailFade * lateralFade * lifeFade;
+  return vec3(0.85, 0.92, 1.0) * bright * 1.5;
+}
+
 void main() {
-  // Aspect-corrected screen UV
   vec2 uv = (vUv - 0.5) * 2.0;
   uv.x *= uRes.x / uRes.y;
 
-  // Camera position - slow orbital drift around the nebula
-  float camDrift = uTime * 0.05;
+  // Camera - very gentle drift (less aggressive than before)
+  float camDrift = uTime * 0.04;
   vec3 ro = vec3(
-    sin(camDrift) * 0.6,
-    cos(camDrift * 0.7) * 0.4,
-    -8.0 + sin(uTime * 0.03) * 0.5
+    sin(camDrift) * 0.3,
+    cos(camDrift * 0.7) * 0.2,
+    -7.0 + sin(uTime * 0.025) * 0.3
   );
 
-  // View direction with slight roll for organic feel
-  float roll = sin(uTime * 0.04) * 0.05;
-  mat2 rollMat = mat2(cos(roll), -sin(roll), sin(roll), cos(roll));
-  vec2 ruv = rollMat * uv;
-  vec3 rd = normalize(vec3(ruv * 1.1, 1.5));
+  vec3 rd = normalize(vec3(uv * 1.0, 1.5));
 
-  // Background = pure black space + star field
+  // Background = pure black space + stars + occasional shooting star
   vec3 bg = vec3(0.0);
   bg += stars(vUv);
+  bg += shootingStar(uv);
 
-  // Ray-march the nebula
-  vec4 neb = marchNebula(ro, rd, uTime);
-
-  // Composite nebula over background
-  vec3 final = mix(bg, neb.rgb, neb.a);
-
-  // Full-field entrainment pulse - subtle ambient brightening across the
-  // entire viewport synchronized with the entrainment frequency. This is
-  // what reaches the retina through closed eyelids.
-  float ambientPulse = uPulse * uIntensity * uEyeBoost * 0.20;
-  final += uCoreColor * ambientPulse * (1.0 - 0.4 * length(uv) * 0.3);
-
-  // Eye-closure boost amplifies overall luminance
-  if (uEyeBoost > 1.0) {
-    final *= 1.0 + (uEyeBoost - 1.0) * uPulse * 0.6;
+  // Only ray-march nebula in the inner ~half of the screen.
+  // For pixels outside this region, skip the expensive march entirely.
+  // Massive performance win because most pixels are pure black space.
+  float distFromCenter = length(uv);
+  vec4 neb = vec4(0.0);
+  if (distFromCenter < 1.5) {
+    neb = marchNebula(ro, rd, uTime);
   }
 
-  // Tone mapping - gentle compression so highlights don't clip flat
+  // Composite
+  vec3 final = mix(bg, neb.rgb, neb.a);
+
+  // Subtle full-field ambient pulse - this is what reaches retinas through
+  // closed eyelids. Always on, even though the nebula is small.
+  float ambient = uPulse * uIntensity * uEyeBoost * 0.13;
+  final += uCoreColor * ambient;
+
+  if (uEyeBoost > 1.0) {
+    final *= 1.0 + (uEyeBoost - 1.0) * uPulse * 0.5;
+  }
+
+  // Tone map for clean highlights
   final = final / (1.0 + final * 0.5);
   final = pow(final, vec3(0.92));
 
@@ -1318,10 +1339,13 @@ void main() {
   const uCoreColor     = gl.getUniformLocation(prog, 'uCoreColor');
   const uOuterColor    = gl.getUniformLocation(prog, 'uOuterColor');
   const uFilamentColor = gl.getUniformLocation(prog, 'uFilamentColor');
+  const uShootSeed     = gl.getUniformLocation(prog, 'uShootSeed');
+  const uShootProgress = gl.getUniformLocation(prog, 'uShootProgress');
 
-  // Resize handler — render at half resolution for performance, browser
-  // upscales smoothly. Trade-off lands on the right side of "fast and clean".
-  const RENDER_SCALE = 0.65;
+  // Render at half resolution for performance — browser upscales smoothly.
+  // The smaller nebula + outer-pixel bypass means most pixels are cheap so
+  // we can afford to push the inner render quality.
+  const RENDER_SCALE = 0.55;
   function resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -1346,9 +1370,27 @@ void main() {
     gamma:  { core: [0.65, 0.50, 0.95], outer: [0.20, 0.12, 0.35], fil: [1.00, 0.70, 0.85] },
   };
 
+  // Shooting star scheduler. A new shooting star fires at random intervals
+  // 30-90 seconds apart, traverses the screen in ~1.2 seconds, then resets.
+  let shootSeed = Math.random() * 1000;
+  let shootStartTime = performance.now() + 8000 + Math.random() * 12000;  // first one in 8-20s
+  const SHOOT_DURATION_MS = 1200;
+  function shootProgress(now) {
+    const elapsed = now - shootStartTime;
+    if (elapsed < 0) return 0;        // not started yet
+    if (elapsed > SHOOT_DURATION_MS) {
+      // Schedule next one
+      shootSeed = Math.random() * 1000;
+      shootStartTime = now + 30000 + Math.random() * 60000;  // 30-90s gap
+      return 0;
+    }
+    return elapsed / SHOOT_DURATION_MS;
+  }
+
   const startTime = performance.now();
   function animate() {
-    const t = (performance.now() - startTime) / 1000;
+    const nowMs = performance.now();
+    const t = (nowMs - startTime) / 1000;
 
     // Pull live state set by the main player script
     const targetHzNow = (typeof window.targetHz === 'number') ? window.targetHz : 10;
@@ -1372,6 +1414,8 @@ void main() {
     gl.uniform3fv(uCoreColor, palette.core);
     gl.uniform3fv(uOuterColor, palette.outer);
     gl.uniform3fv(uFilamentColor, palette.fil);
+    gl.uniform1f(uShootSeed, shootSeed);
+    gl.uniform1f(uShootProgress, shootProgress(nowMs));
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     requestAnimationFrame(animate);
