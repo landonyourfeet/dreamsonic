@@ -113,7 +113,8 @@ router.get('/sessions/:id', async (req, res) => {
               p.code AS protocol_code, p.name AS protocol_name,
               p.target_band, p.target_frequency_hz, p.duration_minutes,
               p.light_intensity_pct, p.audio_type,
-              p.ramp_in_seconds, p.ramp_out_seconds, p.description_wellness
+              p.ramp_in_seconds, p.ramp_out_seconds, p.description_wellness,
+              p.max_freq_shift
          FROM wellness_sessions s
          JOIN wellness_clients c ON c.id = s.client_id
          JOIN wellness_protocols p ON p.id = s.protocol_id
@@ -311,6 +312,27 @@ router.post('/sessions/:id/event', async (req, res) => {
     );
     res.json({ ok: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Records autopilot's baseline brain reading + the personalized session
+// target it computed (= signed step from baseline toward protocol target,
+// capped at the protocol's max_freq_shift). Called once per session at
+// stimulus phase start.
+router.post('/sessions/:id/autopilot-init', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { baseline_brain_hz, computed_target_hz } = req.body;
+    await query(
+      `UPDATE wellness_sessions
+          SET baseline_brain_hz = $1, computed_target_hz = $2
+        WHERE id = $3`,
+      [baseline_brain_hz, computed_target_hz, id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[sessions] autopilot-init error', err);
     res.status(500).json({ error: err.message });
   }
 });
