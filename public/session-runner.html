@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1356,6 +1355,12 @@
       document.getElementById('btnNextPhase').disabled = false;
       document.getElementById('btnStop').disabled = false;
       log('ok', 'SESSION ENGAGED · baseline phase active');
+
+      // Match-and-migrate hooks: load this client's personalized autopilot
+      // params (if they have 3+ prior sessions), and log the start event.
+      loadPersonalizedParams();
+      logMMEvent('session_started', null, null, Number(session.target_frequency_hz), 'no-lock',
+        { protocol_code: session.protocol_code, duration_minutes: session.duration_minutes });
     } catch (err) {
       log('err', 'Start failed · ' + err.message);
     }
@@ -1411,12 +1416,91 @@
   }
 
   // ===== Autopilot Match-and-Migrate Loop =============================
-  // Runs every 2 seconds during the stimulus phase. Drives the orb toward
-  // the client's current brain frequency (match), then once locked,
-  // gradually pulls toward the protocol target (migrate). Safety-clamped.
+  // Two-phase architecture based on the timing model derived from the
+  // research review:
+  //
+  //   MATCH phase  — fast: 15s adjustments, up to 0.3 Hz steps toward brain.
+  //                  Lock established when orb is within 0.4 Hz of brain
+  //                  for 3 consecutive readings.
+  //
+  //   MIGRATE phase — slow: 0.3 Hz steps toward target, hold each step for
+  //                  3 minutes (180s) to let entrainment settle within the
+  //                  brain's tuning bandwidth.
+  //
+  //   LOSS-OF-LOCK — if brain drifts >1 Hz from orb during migration, drop
+  //                  back to MATCH phase, re-establish lock at brain's new
+  //                  position, then resume migration (don't reset progress).
+  //
+  // Every state transition is logged to /api/sessions/:id/mm-event so we
+  // can compute per-session and per-client running profiles.
+
+  // Autopilot state machine
   let autopilotOrbHz = null;
+  let autopilotState = 'idle';        // idle / matching / locked / migrating / target_reached
+  let autopilotLockProgress = 0;       // # consecutive readings within lock threshold
+  let autopilotLastMigrationT = 0;     // ms when we last took a migration step
+  let autopilotLockEstablishedAt = 0;  // ms when current lock began
+  let autopilotMigrationsAttempted = 0;
+  let autopilotMigrationsSuccessful = 0;
+  let autopilotLastTickT = 0;
+
+  // Tunable constants — these get personalized per-client after 3+ sessions
+  // via /api/clients/:id/mm-profile, but start with research-grounded defaults.
+  let MM_LOCK_THRESHOLD_HZ = 0.4;      // distance for "locked" state
+  let MM_LOCK_LOSS_THRESHOLD_HZ = 1.0; // distance that breaks lock
+  let MM_MATCH_STEP_HZ = 0.3;          // max orb step toward brain per tick
+  let MM_MIGRATION_STEP_HZ = 0.3;      // step toward target per migration
+  let MM_MIGRATION_HOLD_SEC = 180;     // seconds to hold after each migration step
+  let MM_TICK_INTERVAL_MS = 15000;     // 15s adjustment cadence
+  let MM_LOCK_CONFIRM_TICKS = 3;       // # consecutive close readings to confirm lock
+  let MM_TARGET_REACHED_HZ = 0.5;      // distance from target to count as "reached"
+
+  // Apply personalized parameters from the client's profile (if available)
+  async function loadPersonalizedParams() {
+    if (!session || !session.client_id) return;
+    try {
+      const r = await fetch(`/api/clients/${session.client_id}/mm-profile`);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.suggested && data.suggested.use_personalized_params) {
+        if (data.suggested.migration_step_hz) MM_MIGRATION_STEP_HZ = data.suggested.migration_step_hz;
+        if (data.suggested.migration_hold_sec) MM_MIGRATION_HOLD_SEC = data.suggested.migration_hold_sec;
+        if (data.suggested.lock_threshold_hz) MM_LOCK_THRESHOLD_HZ = data.suggested.lock_threshold_hz;
+        log('ok', `AUTOPILOT · personalized params loaded · step=${MM_MIGRATION_STEP_HZ}Hz hold=${MM_MIGRATION_HOLD_SEC}s threshold=${MM_LOCK_THRESHOLD_HZ}Hz`);
+      } else {
+        log('info', `AUTOPILOT · using default params (${data.profile?.sessions_count || 0} prior sessions)`);
+      }
+    } catch (err) {
+      log('warn', 'AUTOPILOT · profile load failed: ' + err.message);
+    }
+  }
+
+  // Log an event to the mm-event endpoint
+  function logMMEvent(event_type, brain_hz, orb_hz, target_hz, lock_state, metadata) {
+    if (!session) return;
+    fetch(`/api/sessions/${session.id}/mm-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_type,
+        brain_hz: brain_hz != null ? Number(brain_hz.toFixed(2)) : null,
+        orb_hz: orb_hz != null ? Number(orb_hz.toFixed(2)) : null,
+        target_hz: target_hz != null ? Number(target_hz.toFixed(2)) : null,
+        lock_state: lock_state || null,
+        metadata: metadata || null,
+      }),
+    }).catch(err => console.warn('[mm-event] post failed:', err));
+  }
+
+  // Main autopilot tick — runs every MM_TICK_INTERVAL_MS during stimulus
   setInterval(() => {
     if (phase !== 'stimulus') {
+      // Reset state when leaving stimulus phase
+      if (autopilotState !== 'idle') {
+        logMMEvent('autopilot_disengaged', null, autopilotOrbHz, null, autopilotState);
+        autopilotState = 'idle';
+        autopilotLockProgress = 0;
+      }
       MatchMigrate.setEngineAction('STANDING BY');
       return;
     }
@@ -1430,55 +1514,182 @@
       return;
     }
 
-    // Initialize the orb frequency once we have a brain reading
-    if (autopilotOrbHz == null) {
-      autopilotOrbHz = targetHz;
+    const now = Date.now();
+    autopilotLastTickT = now;
+
+    // Engagement: first time we see brain data during stimulus
+    if (autopilotState === 'idle') {
+      autopilotOrbHz = brainHz;  // Start orb where brain is — no abrupt jump
+      autopilotState = 'matching';
+      autopilotLockProgress = 0;
+      logMMEvent('autopilot_engaged', brainHz, autopilotOrbHz, targetHz, 'matching',
+        { initial_brain_hz: brainHz, target_hz: targetHz });
     }
 
-    // Match-and-migrate logic:
-    //   - If orb is far from brain (>1.5 Hz), pull orb toward brain (matching)
-    //   - If orb is near brain (locked), drift orb gently toward target (migrating)
-    //   - If brain has reached target, hold the orb at target
     const matchGap = brainHz - autopilotOrbHz;
     const targetGap = targetHz - brainHz;
-    let action = 'HOLD';
-    let severity = '';
+    let action = 'HOLD', severity = '';
 
-    if (Math.abs(targetGap) <= 0.5) {
-      // Brain has arrived at target - just hold
+    // ---- TARGET REACHED ----
+    if (Math.abs(targetGap) <= MM_TARGET_REACHED_HZ) {
+      if (autopilotState !== 'target_reached') {
+        logMMEvent('target_reached', brainHz, autopilotOrbHz, targetHz, 'reached',
+          { final_brain_hz: brainHz });
+        autopilotState = 'target_reached';
+      }
       autopilotOrbHz = targetHz;
       action = 'TARGET REACHED · HOLDING';
       severity = 'green';
-    } else if (Math.abs(matchGap) > 1.5) {
-      // Need to match - pull orb toward brain at 50% per tick
-      autopilotOrbHz += matchGap * 0.5;
-      action = 'MATCHING · pulling orb toward brain';
-      severity = 'amber';
-    } else if (Math.abs(matchGap) > 0.5) {
-      // Acquiring lock - finer adjustment
-      autopilotOrbHz += matchGap * 0.6;
-      action = 'ACQUIRING LOCK · refining';
-      severity = 'amber';
-    } else {
-      // Locked - migrate orb toward target, brain follows via entrainment
-      // Move at 0.3 Hz per tick, clamped by direction
-      const step = Math.sign(targetGap) * Math.min(0.3, Math.abs(targetGap));
+    }
+    // ---- LOSS OF LOCK during migration ----
+    else if ((autopilotState === 'locked' || autopilotState === 'migrating')
+             && Math.abs(matchGap) > MM_LOCK_LOSS_THRESHOLD_HZ) {
+      logMMEvent('lock_lost', brainHz, autopilotOrbHz, targetHz, 'no-lock',
+        { deviation_hz: Math.abs(matchGap),
+          lock_held_sec: (now - autopilotLockEstablishedAt) / 1000 });
+      log('warn', `LOCK LOST · brain ${brainHz.toFixed(1)}Hz · orb ${autopilotOrbHz.toFixed(1)}Hz`);
+      autopilotState = 'matching';
+      autopilotLockProgress = 0;
+      // Move orb toward brain to recover
+      const step = Math.sign(matchGap) * Math.min(MM_MATCH_STEP_HZ, Math.abs(matchGap));
       autopilotOrbHz += step;
-      action = 'MIGRATING · pulling brain to target';
+      action = 'RECOVERING · brain drifted';
+      severity = 'amber';
+    }
+    // ---- MATCHING ----
+    else if (autopilotState === 'matching') {
+      if (Math.abs(matchGap) <= MM_LOCK_THRESHOLD_HZ) {
+        // Within threshold — count toward lock confirmation
+        autopilotLockProgress += 1;
+        action = `ACQUIRING LOCK · ${autopilotLockProgress}/${MM_LOCK_CONFIRM_TICKS}`;
+        severity = 'amber';
+        if (autopilotLockProgress >= MM_LOCK_CONFIRM_TICKS) {
+          autopilotState = 'locked';
+          autopilotLockEstablishedAt = now;
+          autopilotLastMigrationT = now;
+          logMMEvent('lock_established', brainHz, autopilotOrbHz, targetHz, 'locked',
+            { time_since_engaged_sec: 'tracked-by-event-log' });
+          log('ok', `LOCK ESTABLISHED · brain ${brainHz.toFixed(1)}Hz · orb ${autopilotOrbHz.toFixed(1)}Hz`);
+          action = 'LOCKED · holding before migration';
+          severity = 'green';
+        }
+      } else {
+        // Step orb toward brain
+        autopilotLockProgress = 0;
+        const step = Math.sign(matchGap) * Math.min(MM_MATCH_STEP_HZ, Math.abs(matchGap));
+        autopilotOrbHz += step;
+        action = `MATCHING · gap ${matchGap.toFixed(1)}Hz`;
+        severity = 'amber';
+      }
+    }
+    // ---- LOCKED (waiting for migration cooldown) ----
+    else if (autopilotState === 'locked') {
+      const sinceMigration = (now - autopilotLastMigrationT) / 1000;
+      if (sinceMigration >= MM_MIGRATION_HOLD_SEC) {
+        // Cooldown elapsed — take a migration step
+        autopilotState = 'migrating';
+        const step = Math.sign(targetGap) * Math.min(MM_MIGRATION_STEP_HZ, Math.abs(targetGap));
+        autopilotOrbHz += step;
+        autopilotLastMigrationT = now;
+        autopilotMigrationsAttempted += 1;
+        autopilotMigrationsSuccessful += 1;  // optimistically count, may change to failed if lock breaks
+        logMMEvent('migration_step', brainHz, autopilotOrbHz, targetHz, 'migrating',
+          { step_hz: step, target_gap_hz: targetGap });
+        log('ok', `MIGRATION STEP · orb ${(autopilotOrbHz - step).toFixed(1)}Hz → ${autopilotOrbHz.toFixed(1)}Hz`);
+        action = `MIGRATING · ${step >= 0 ? '+' : ''}${step.toFixed(2)}Hz`;
+        severity = 'green';
+      } else {
+        const remaining = Math.round(MM_MIGRATION_HOLD_SEC - sinceMigration);
+        action = `LOCKED · migration in ${remaining}s`;
+        severity = 'green';
+      }
+    }
+    // ---- MIGRATING (just took a step, transition back to locked) ----
+    else if (autopilotState === 'migrating') {
+      // Brain hasn't broken lock — settled back to locked, await next migration cooldown
+      autopilotState = 'locked';
+      action = 'LOCKED · settling';
       severity = 'green';
     }
 
-    // Hard safety clamp - 2 to 14 Hz, no exceptions
+    // Hard safety clamp — 2 to 14 Hz no matter what
     autopilotOrbHz = Math.max(2, Math.min(14, autopilotOrbHz));
 
-    // Update the engine readout + push orb sample for the graph
     MatchMigrate.setOrbHz(autopilotOrbHz);
     MatchMigrate.setEngineAction(action, severity);
 
-    // TODO: also send this directive over WebSocket to the stimulation player
-    // so the orb actually pulses at the new frequency. For now, the graph
-    // displays the engine's intent. (Wiring through ws-hub comes next.)
-  }, 2000);
+    // Send directive to stimulation player
+    sendDirective({
+      frequencyHz: autopilotOrbHz,
+      intensityPct: 65,
+      action: action.replace(/[^A-Z_ ]/g, '').trim() || 'AUTOPILOT',
+      reason: 'autopilot match-and-migrate',
+      target_band: session.target_band,
+    });
+  }, 15000);  // 15-second tick interval, matches MM_TICK_INTERVAL_MS
+
+  // ---- Controller WebSocket connection ------------------------------------
+  // The runner connects to the ws-hub as 'controller' and sends directive
+  // messages to the orb player. The hub relays them to all peers in the
+  // session room (the player listens at role='player').
+  let controllerWs = null;
+  let controllerWsReconnect = 1000;
+  function connectController() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = `${proto}://${location.host}/ws`;
+    try {
+      controllerWs = new WebSocket(url);
+    } catch (e) {
+      log('warn', 'Controller WS create failed: ' + e.message);
+      return;
+    }
+    controllerWs.onopen = () => {
+      controllerWsReconnect = 1000;
+      controllerWs.send(JSON.stringify({
+        type: 'join', session_id: sessionId, role: 'controller',
+      }));
+      log('ok', 'Controller link active · directives → player');
+    };
+    controllerWs.onmessage = (evt) => {
+      let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+      // When the player joins (or reconnects), push the current orb state
+      // immediately so it doesn't sit at zero intensity.
+      if (msg.type === 'peer_joined' && msg.role === 'player' && session) {
+        const hz = autopilotOrbHz != null ? autopilotOrbHz
+                 : Number(session.target_frequency_hz);
+        const intensity = (phase === 'stimulus') ? 65
+                       : (phase === 'baseline' || phase === 'cooldown') ? 30
+                       : 50;
+        sendDirective({
+          frequencyHz: hz,
+          intensityPct: intensity,
+          action: 'INITIAL_LOCK',
+          reason: 'player joined session',
+          target_band: session.target_band,
+        });
+        log('ok', 'Player connected · initial directive sent · ' + hz + 'Hz');
+      }
+    };
+    controllerWs.onclose = () => {
+      controllerWs = null;
+      setTimeout(connectController,
+        Math.min(10000, controllerWsReconnect = controllerWsReconnect * 1.5));
+    };
+    controllerWs.onerror = () => { /* onclose runs */ };
+  }
+  function sendDirective(payload) {
+    if (!controllerWs || controllerWs.readyState !== WebSocket.OPEN) return;
+    try {
+      controllerWs.send(JSON.stringify({
+        type: 'directive',
+        session_id: sessionId,
+        payload,
+      }));
+    } catch (e) { /* swallow */ }
+  }
+  // Connect once at boot so the player picks up directives whenever
+  // we have something to send.
+  connectController();
 
   // Helper to read the current brain Hz from MatchMigrate
   function currentBrainHzFromMM() {
@@ -1592,6 +1803,15 @@
   async function submitPost(earlyStop) {
     const url = earlyStop ? `/api/sessions/${sessionId}/stop` : `/api/sessions/${sessionId}/complete`;
     try {
+      // Log the session_ended event before posting completion — captures
+      // final brain/orb state for the summary computation.
+      logMMEvent('session_ended', currentBrainHzFromMM(), autopilotOrbHz,
+        session ? Number(session.target_frequency_hz) : null,
+        autopilotState,
+        { early_stop: !!earlyStop,
+          migrations_attempted: autopilotMigrationsAttempted,
+          migrations_successful: autopilotMigrationsSuccessful });
+
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1605,6 +1825,26 @@
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
+
+      // Trigger the per-session summary computation — server pulls all events,
+      // computes time-to-lock, total locked time, largest successful step,
+      // tuning bandwidth, etc. Stored in wellness_match_migrate_summaries.
+      try {
+        const sumR = await fetch(`/api/sessions/${sessionId}/mm-summary`, { method: 'POST' });
+        if (sumR.ok) {
+          const sumData = await sumR.json();
+          if (sumData.summary) {
+            const s = sumData.summary;
+            log('ok', `MM SUMMARY · lock=${s.time_to_first_lock_sec ?? '—'}s · ` +
+                       `locked_ratio=${s.locked_ratio ?? '—'} · ` +
+                       `migrations=${s.migrations_successful}/${s.migrations_attempted} · ` +
+                       `target=${s.target_reached ? 'reached' : 'not reached'}`);
+          }
+        }
+      } catch (e) {
+        log('warn', 'MM summary compute failed: ' + e.message);
+      }
+
       document.getElementById('postModal').classList.remove('open');
       log('ok', 'Session finalized · packet ready');
       if (eegSource) await eegSource.disconnect();
