@@ -19,8 +19,8 @@ window.WellnessEEG = (function () {
 
   function createSource(kind) {
     if (kind === 'epoc' || kind === 'epoc1' || kind === 'epoc14')  return new EmotivEPOCBridgeSource();
+    if (kind === 'myndband' || kind === 'myndplay')                return new MyndPlayBridgeSource();
     if (kind === 'brainbit' || kind === 'bluetooth')               return new BluetoothEEGSource();
-    if (kind === 'myndband')                                       return new BluetoothEEGSource();  // TODO: dedicated TGAM
     return new SimulatorEEGSource();
   }
 
@@ -420,6 +420,134 @@ window.WellnessEEG = (function () {
             }
           };
           ws.onerror = () => { /* onclose will run; let it handle */ };
+        };
+        tryOpen();
+      });
+    };
+
+    this.disconnect = async function () {
+      self._wantOpen = false;
+      if (self._ws) {
+        try { self._ws.close(); } catch (e) {}
+        self._ws = null;
+      }
+      if (self._connected) {
+        self._connected = false;
+        self._emitStatus('disconnected');
+      }
+    };
+
+    this.isConnected = () => self._connected;
+    this.onSample  = (cb) => { self._sampleCbs.add(cb);  return () => self._sampleCbs.delete(cb); };
+    this.onStatus  = (cb) => { self._statusCbs.add(cb);  return () => self._statusCbs.delete(cb); };
+    this.onQuality = (cb) => { self._qualityCbs.add(cb); return () => self._qualityCbs.delete(cb); };
+    this.setStimulusMode = function () { /* no-op */ };
+    this.getProfile = () => Object.assign({}, self._profile);
+    this._emitStatus = function (s) { for (const cb of self._statusCbs) { try { cb(s); } catch(e) {} } };
+  }
+
+  // ─── MyndPlay MyndBand (via local Python bridge over WebSocket) ────────
+  //
+  // Single-channel BLE headset at Fp1 (forehead, left frontal).
+  // Bridge runs on operator's Mac (myndplay-bridge/myndplay_bridge.py),
+  // exposes raw samples + signal quality on ws://localhost:8766.
+  //
+  // Message format from bridge:
+  //   { type: 'profile',  payload: {...device profile...} }
+  //   { type: 'sample_batch', payload: { t, channel, samples: [µV...] } }
+  //   { type: 'quality', payload: { t, perChannel: [{name, quality_pct, contact}] } }
+  //
+  // Sample fan-out: bridge sends batches of new raw samples since last poll
+  // (~5-25 samples per WebSocket message at 512Hz). We expand each batch
+  // into single-sample events so the rest of DreamSonic (which expects
+  // {t, channels: [µV]}) sees identical shape to BrainBit/Simulator.
+  function MyndPlayBridgeSource() {
+    const self = this;
+    this._connected = false;
+    this._sampleCbs = new Set();
+    this._statusCbs = new Set();
+    this._qualityCbs = new Set();
+    this._ws = null;
+    this._reconnectDelay = 1000;
+    this._wantOpen = false;
+    this._profile = {
+      code: 'myndband',
+      display_name: 'MyndPlay MyndBand',
+      channel_count: 1,
+      channel_map: ['Fp1'],
+      sample_rate_hz: 512,
+      frontal_available: true,
+    };
+
+    function bridgeUrl() {
+      const override = (typeof localStorage !== 'undefined')
+        ? localStorage.getItem('myndplay_bridge_url') : null;
+      return override || 'ws://localhost:8766';
+    }
+
+    this.connect = async function () {
+      if (self._connected) return;
+      self._wantOpen = true;
+      self._emitStatus('connecting');
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const tryOpen = () => {
+          if (!self._wantOpen) return;
+          let ws;
+          try { ws = new WebSocket(bridgeUrl()); }
+          catch (e) {
+            if (!settled) { settled = true; self._emitStatus('error'); reject(e); }
+            return;
+          }
+          self._ws = ws;
+          ws.onopen = () => {
+            self._connected = true;
+            self._reconnectDelay = 1000;
+            self._emitStatus('connected');
+            if (!settled) { settled = true; resolve(); }
+          };
+          ws.onmessage = (ev) => {
+            let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+            if (msg.type === 'profile' && msg.payload) {
+              self._profile = Object.assign({}, self._profile, msg.payload);
+            } else if (msg.type === 'sample_batch' && msg.payload) {
+              // Expand the batch into single-sample events
+              const samples = msg.payload.samples || [];
+              const baseT = msg.payload.t || Date.now();
+              const sr = self._profile.sample_rate_hz || 512;
+              const dt = 1000 / sr;
+              for (let i = 0; i < samples.length; i++) {
+                const sample = {
+                  t: baseT - (samples.length - 1 - i) * dt,
+                  channels: [samples[i]],  // single-channel: array of length 1
+                };
+                for (const cb of self._sampleCbs) { try { cb(sample); } catch(e) {} }
+              }
+            } else if (msg.type === 'sample' && msg.payload) {
+              // Older single-sample format compatibility
+              const sample = { t: msg.payload.t || Date.now(),
+                               channels: msg.payload.channels || [msg.payload.raw_uv || 0] };
+              for (const cb of self._sampleCbs) { try { cb(sample); } catch(e) {} }
+            } else if (msg.type === 'quality' && msg.payload) {
+              for (const cb of self._qualityCbs) { try { cb(msg.payload); } catch(e) {} }
+            }
+          };
+          ws.onclose = () => {
+            self._connected = false;
+            self._emitStatus('disconnected');
+            if (self._wantOpen) {
+              self._reconnectDelay = Math.min(10000, self._reconnectDelay * 1.5);
+              setTimeout(tryOpen, self._reconnectDelay);
+            }
+            if (!settled) {
+              settled = true;
+              reject(new Error(
+                'Could not reach MyndPlay bridge at ' + bridgeUrl() +
+                '. Make sure the bridge program is running on your Mac.'
+              ));
+            }
+          };
+          ws.onerror = () => { /* onclose runs */ };
         };
         tryOpen();
       });
