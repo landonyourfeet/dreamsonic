@@ -260,6 +260,22 @@ const STATEMENTS = [
   // Existing sessions predating this column keep their legacy eeg_source text.
   `ALTER TABLE wellness_sessions
      ADD COLUMN IF NOT EXISTS eeg_device_code TEXT REFERENCES wellness_eeg_devices(code)`,
+
+  // Per-protocol safety cap on how far the autopilot is allowed to move
+  // a brain in a single session. Default 4 Hz prevents aggressive shifts.
+  // Combined with start-where-brain-is logic, this means a session targets
+  // the SIGNED MIN(brain_baseline ± max_freq_shift, protocol_target).
+  `ALTER TABLE wellness_protocols
+     ADD COLUMN IF NOT EXISTS max_freq_shift NUMERIC(4,2) NOT NULL DEFAULT 4.0`,
+
+  // Computed per-session target — set by the runner once baseline phase
+  // ends, capturing the actual destination for this client this session.
+  // = baseline_brain_hz + signed_step toward protocol target_frequency_hz,
+  // clamped by protocol max_freq_shift.
+  `ALTER TABLE wellness_sessions
+     ADD COLUMN IF NOT EXISTS baseline_brain_hz NUMERIC(5,2)`,
+  `ALTER TABLE wellness_sessions
+     ADD COLUMN IF NOT EXISTS computed_target_hz NUMERIC(5,2)`,
 ];
 
 async function init() {
