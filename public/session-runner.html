@@ -335,6 +335,152 @@
     margin-bottom: 14px;
     letter-spacing: 0.5px;
   }
+  /* === Sensor Quality Popup =========================================== */
+  .sq-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(2, 5, 10, 0.92);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 200;
+    backdrop-filter: blur(6px);
+  }
+  .sq-backdrop.show { display: flex; }
+  .sq-modal {
+    background: var(--halo-panel);
+    border: 1px solid var(--halo-line);
+    width: 720px; max-width: 96vw;
+    max-height: 90vh; overflow-y: auto;
+    padding: 28px 32px;
+    position: relative;
+  }
+  .sq-modal::before, .sq-modal::after {
+    content: ''; position: absolute;
+    width: 14px; height: 14px;
+    border: 1px solid var(--halo-cyan);
+  }
+  .sq-modal::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .sq-modal::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+  .sq-title {
+    font-size: 11px; letter-spacing: 4px; color: var(--halo-cyan);
+    margin-bottom: 6px;
+  }
+  .sq-headline {
+    font-size: 22px; font-weight: 300; color: var(--halo-text);
+    letter-spacing: 1px; margin-bottom: 4px;
+  }
+  .sq-sub {
+    font-size: 12px; color: var(--halo-text-dim);
+    letter-spacing: 1.5px; margin-bottom: 24px;
+  }
+  .sq-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    align-items: start;
+  }
+  .sq-diagram-wrap {
+    position: relative;
+    aspect-ratio: 1;
+    background: var(--halo-deep);
+    border: 1px solid var(--halo-line);
+  }
+  .sq-diagram-wrap svg { display: block; width: 100%; height: 100%; }
+  .sq-electrode {
+    transition: fill 0.4s ease, stroke 0.3s ease, r 0.2s ease;
+  }
+  .sq-electrode-label {
+    font-family: monospace; font-size: 7px; fill: var(--halo-text-dim);
+    text-anchor: middle; pointer-events: none;
+    letter-spacing: 0.5px;
+  }
+  .sq-list { display: flex; flex-direction: column; gap: 6px; }
+  .sq-row {
+    display: grid; grid-template-columns: 56px 1fr 48px;
+    align-items: center; gap: 10px;
+    padding: 6px 10px;
+    background: var(--halo-deep);
+    border-left: 2px solid var(--halo-line);
+    font-size: 11px;
+    transition: border-color 0.3s ease;
+  }
+  .sq-row.good { border-left-color: var(--halo-green); }
+  .sq-row.fair { border-left-color: var(--halo-amber); }
+  .sq-row.poor { border-left-color: var(--halo-red); }
+  .sq-row.off  { border-left-color: var(--halo-line); opacity: 0.55; }
+  .sq-row .name { font-weight: 500; color: var(--halo-text); letter-spacing: 1px; }
+  .sq-row .bar  { height: 4px; background: var(--halo-line); position: relative; }
+  .sq-row .fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    background: var(--halo-line);
+    transition: width 0.3s ease, background 0.3s ease;
+  }
+  .sq-row.good .fill { background: var(--halo-green); }
+  .sq-row.fair .fill { background: var(--halo-amber); }
+  .sq-row.poor .fill { background: var(--halo-red); }
+  .sq-row .pct {
+    font-family: monospace; font-size: 10px;
+    color: var(--halo-text-dim); text-align: right;
+  }
+  .sq-summary {
+    margin-top: 20px;
+    padding: 12px 14px;
+    background: var(--halo-deep);
+    border: 1px solid var(--halo-line);
+    display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    text-align: center;
+    font-family: monospace;
+  }
+  .sq-summary .stat .num {
+    font-size: 18px; font-weight: 300; color: var(--halo-text);
+    letter-spacing: 1px;
+  }
+  .sq-summary .stat .num.good { color: var(--halo-green); }
+  .sq-summary .stat .num.fair { color: var(--halo-amber); }
+  .sq-summary .stat .num.poor { color: var(--halo-red); }
+  .sq-summary .stat .num.off  { color: var(--halo-text-faint); }
+  .sq-summary .stat .lbl {
+    font-size: 8px; color: var(--halo-text-faint);
+    letter-spacing: 2px; margin-top: 2px;
+  }
+  .sq-actions {
+    margin-top: 22px;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .sq-gate-msg {
+    font-size: 11px; letter-spacing: 1px;
+    color: var(--halo-text-dim);
+  }
+  .sq-gate-msg.ready { color: var(--halo-green); }
+  .sq-gate-msg.warn  { color: var(--halo-amber); }
+
+  /* Live electrode strip on the runner */
+  .sq-strip {
+    display: flex; gap: 3px; margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .sq-strip-pip {
+    width: 14px; height: 14px;
+    background: var(--halo-line);
+    position: relative;
+    transition: background 0.3s ease;
+    cursor: help;
+  }
+  .sq-strip-pip.good { background: var(--halo-green); }
+  .sq-strip-pip.fair { background: var(--halo-amber); }
+  .sq-strip-pip.poor { background: var(--halo-red); }
+  .sq-strip-pip.off  { background: var(--halo-line); }
+  .sq-strip-pip:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--halo-void);
+    border: 1px solid var(--halo-cyan);
+    color: var(--halo-text); font-size: 9px;
+    padding: 3px 6px; white-space: nowrap;
+    z-index: 5;
+    letter-spacing: 1px;
+  }
 </style>
 </head>
 <body>
@@ -639,15 +785,29 @@
         el.className = 'hd-pill ' + (s === 'connected' ? 'ok' : s === 'error' ? 'err' : s === 'disconnected' ? 'idle' : 'warn');
       });
       eegSource.onSample(onSample);
+      // Subscribe to per-channel signal-quality reports if the adapter supports them
+      if (typeof eegSource.onQuality === 'function') {
+        eegSource.onQuality(onQualityReport);
+      }
       await eegSource.connect();
       log('ok', `Headband linked · source: ${eegKind}`);
-      document.getElementById('btnStart').disabled = false;
+      // Initialize the sensor-quality popup with the device's profile,
+      // then open it. The Start Session button stays disabled until the
+      // operator clicks "Proceed to Session" inside the popup.
+      const profile = (typeof eegSource.getProfile === 'function')
+        ? eegSource.getProfile()
+        : { channel_map: ['CH1','CH2','CH3','CH4'], display_name: eegKind };
+      SensorQuality.openCheck(profile);
       const info = eegSource.getDeviceInfo();
       if (info?.battery != null) document.getElementById('batteryVal').textContent = info.battery + '%';
     } catch (err) {
       log('err', 'Link failed · ' + err.message);
     }
   });
+
+  function onQualityReport(report) {
+    SensorQuality.updateLive(report);
+  }
 
   function onSample(sample) {
     sampleCount++;
@@ -985,6 +1145,235 @@
     }
   }
 
+  // ===== Sensor Quality Module =========================================
+  // Manages the pre-session electrode-check popup AND the live-monitor strip
+  // that stays visible during sessions. Subscribes to onQuality reports from
+  // the EEG source and renders both the head diagram and the per-channel
+  // list with red/amber/green coding.
+  const SensorQuality = (function () {
+    // 10-20 approximate normalized positions on a 240×240 head diagram.
+    // (cx, cy) coordinates — extend this map for other devices later.
+    const POSITIONS = {
+      // Frontal pole / pre-frontal
+      Fp1:  [102, 38],   Fp2:  [138, 38],
+      AF3:  [98,  56],   AF4:  [142, 56],   AF7:  [78, 60],   AF8:  [162, 60],
+      // Frontal
+      F7:   [62,  82],   F8:   [178, 82],
+      F3:   [92,  86],   F4:   [148, 86],
+      F5:   [78,  86],   F6:   [162, 86],
+      Fz:   [120, 86],
+      // Frontal-central
+      FC5:  [70, 108],   FC6:  [170, 108],
+      // Central
+      C3:   [85, 125],   C4:   [155, 125],   Cz:   [120, 125],
+      // Temporal
+      T3:   [40, 125],   T4:   [200, 125],
+      T7:   [44, 125],   T8:   [196, 125],
+      TP9:  [42, 145],   TP10: [198, 145],
+      // Centro-parietal
+      CP3:  [82, 152],   CP4:  [158, 152],
+      // Parietal
+      P3:   [88, 168],   P4:   [152, 168],   Pz:  [120, 165],
+      P7:   [62, 175],   P8:   [178, 175],
+      PO3:  [98, 192],   PO4:  [142, 192],   PO7: [78, 200],   PO8: [162, 200],
+      // Occipital
+      O1:   [102, 210],  O2:   [138, 210],
+      // References
+      CMS:  [60,  155],  DRL:  [180, 155],
+    };
+
+    const sqBackdrop = document.getElementById('sqBackdrop');
+    const svgGroup   = document.getElementById('sqElectrodes');
+    const list       = document.getElementById('sqList');
+
+    let currentProfile = null;
+    let inSession = false;          // true once operator clicks Proceed
+    let lastReport = null;
+    let stripContainer = null;      // injected into the runner header for live monitoring
+    let consecutiveBadReports = 0;
+
+    function open(profile) {
+      currentProfile = profile;
+      consecutiveBadReports = 0;
+      buildDiagram(profile);
+      buildList(profile);
+      document.getElementById('sqHeadline').textContent =
+        'Verifying ' + (profile.display_name || 'Headset') + ' Contact';
+      document.getElementById('sqSub').textContent =
+        profile.channel_count + ' channels · awaiting signal';
+      sqBackdrop.classList.add('show');
+    }
+
+    function buildDiagram(profile) {
+      svgGroup.innerHTML = '';
+      for (const name of profile.channel_map) {
+        const pos = POSITIONS[name];
+        if (!pos) continue;
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('cx', pos[0]);
+        c.setAttribute('cy', pos[1]);
+        c.setAttribute('r', 7);
+        c.setAttribute('class', 'sq-electrode');
+        c.setAttribute('fill', '#1a1a2e');
+        c.setAttribute('stroke', '#3a5678');
+        c.setAttribute('stroke-width', '1');
+        c.setAttribute('data-name', name);
+        svgGroup.appendChild(c);
+
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.setAttribute('class', 'sq-electrode-label');
+        t.setAttribute('x', pos[0]);
+        t.setAttribute('y', pos[1] + 2);
+        t.textContent = name;
+        svgGroup.appendChild(t);
+      }
+    }
+
+    function buildList(profile) {
+      list.innerHTML = '';
+      for (const name of profile.channel_map) {
+        const row = document.createElement('div');
+        row.className = 'sq-row off';
+        row.dataset.name = name;
+        row.innerHTML = `
+          <div class="name">${name}</div>
+          <div class="bar"><div class="fill" style="width:0%"></div></div>
+          <div class="pct">—</div>`;
+        list.appendChild(row);
+      }
+    }
+
+    // Color map for electrode + row state
+    const FILL_BY_CONTACT = {
+      good: '#00ff88', fair: '#ffaa00', poor: '#ff3050', off: '#1a1a2e',
+    };
+
+    function updateLive(report) {
+      if (!report || !report.perChannel) return;
+      lastReport = report;
+
+      // Update SVG electrodes + list rows
+      let counts = { good: 0, fair: 0, poor: 0, off: 0 };
+      for (const ch of report.perChannel) {
+        // Update the SVG electrode
+        const circle = svgGroup.querySelector(`circle[data-name="${ch.name}"]`);
+        if (circle) {
+          circle.setAttribute('fill', FILL_BY_CONTACT[ch.contact] || FILL_BY_CONTACT.off);
+          circle.setAttribute('stroke', ch.contact === 'good' ? '#00ff88' : '#3a5678');
+          circle.setAttribute('r', ch.contact === 'good' ? 8 : 7);
+        }
+        // Update the list row
+        const row = list.querySelector(`.sq-row[data-name="${ch.name}"]`);
+        if (row) {
+          row.className = 'sq-row ' + ch.contact;
+          row.querySelector('.fill').style.width = (ch.quality_pct || 0) + '%';
+          row.querySelector('.pct').textContent = (ch.quality_pct || 0) + '%';
+        }
+        counts[ch.contact] = (counts[ch.contact] || 0) + 1;
+      }
+      document.getElementById('sqCountGood').textContent = counts.good;
+      document.getElementById('sqCountFair').textContent = counts.fair;
+      document.getElementById('sqCountPoor').textContent = counts.poor;
+      document.getElementById('sqCountOff').textContent  = counts.off;
+
+      // Gate logic: ≥75% of channels must be good/fair
+      const total   = report.perChannel.length;
+      const usable  = counts.good + counts.fair;
+      const ratio   = total > 0 ? usable / total : 0;
+      const proceed = document.getElementById('sqBtnProceed');
+      const gateMsg = document.getElementById('sqGateMsg');
+      if (ratio >= 0.75) {
+        proceed.disabled = false;
+        gateMsg.className = 'sq-gate-msg ready';
+        gateMsg.textContent = `READY · ${usable}/${total} channels OK`;
+      } else {
+        proceed.disabled = true;
+        gateMsg.className = 'sq-gate-msg warn';
+        gateMsg.textContent = `WAITING · ${usable}/${total} channels — adjust electrodes`;
+      }
+
+      // If we're in a live session, also update the persistent strip
+      if (inSession && stripContainer) {
+        updateStrip(report);
+        // Auto-pause integration: if too many channels drop out for >5s,
+        // log it. (The analysis engine independently freezes via ARTIFACT
+        // state when signal quality is poor — this is just operator visibility.)
+        if (ratio < 0.5) {
+          consecutiveBadReports++;
+          if (consecutiveBadReports === 20) {  // ~5s at 4Hz
+            log('warn', 'Sensor contact degraded · only ' + usable + '/' + total + ' channels OK');
+          }
+        } else {
+          consecutiveBadReports = 0;
+        }
+      }
+    }
+
+    function updateStrip(report) {
+      const strip = stripContainer;
+      if (!strip) return;
+      // Build pips lazily on first report
+      if (strip.children.length !== report.perChannel.length) {
+        strip.innerHTML = '';
+        for (const ch of report.perChannel) {
+          const pip = document.createElement('div');
+          pip.className = 'sq-strip-pip ' + ch.contact;
+          pip.dataset.name = ch.name;
+          pip.dataset.tip = ch.name + ' · ' + (ch.quality_pct || 0) + '%';
+          strip.appendChild(pip);
+        }
+      } else {
+        const pips = strip.children;
+        for (let i = 0; i < report.perChannel.length; i++) {
+          const ch = report.perChannel[i];
+          pips[i].className = 'sq-strip-pip ' + ch.contact;
+          pips[i].dataset.tip = ch.name + ' · ' + (ch.quality_pct || 0) + '%';
+        }
+      }
+    }
+
+    function ensureStripContainer() {
+      // Inject a strip into the dossier panel under the EEG status pill so
+      // the operator always sees per-channel contact quality during a session.
+      if (stripContainer) return;
+      const eegStatusEl = document.getElementById('eegStatus');
+      if (!eegStatusEl) return;
+      const strip = document.createElement('div');
+      strip.className = 'sq-strip';
+      strip.id = 'sqLiveStrip';
+      // Insert immediately after the eegStatus pill's parent container
+      eegStatusEl.parentElement.appendChild(strip);
+      stripContainer = strip;
+      if (lastReport) updateStrip(lastReport);
+    }
+
+    // Wire popup buttons
+    document.getElementById('sqBtnProceed').addEventListener('click', () => {
+      sqBackdrop.classList.remove('show');
+      inSession = true;
+      ensureStripContainer();
+      document.getElementById('btnStart').disabled = false;
+      log('ok', 'Sensor check passed · proceeding to session');
+    });
+    document.getElementById('sqBtnCancel').addEventListener('click', async () => {
+      sqBackdrop.classList.remove('show');
+      try { if (eegSource && eegSource.disconnect) await eegSource.disconnect(); } catch (e) {}
+      log('warn', 'Sensor check cancelled by operator');
+    });
+    document.getElementById('sqBtnRetry').addEventListener('click', () => {
+      // "Wait" just hides the popup so operator can adjust electrodes.
+      // Quality reports keep flowing; opening again later resumes.
+      sqBackdrop.classList.remove('show');
+      log('info', 'Sensor check paused · re-open via Connect Headband');
+    });
+
+    return {
+      openCheck: open,
+      updateLive,
+      isInSession: () => inSession,
+    };
+  })();
+
   function log(level, msg) {
     const el = document.getElementById('eventLog');
     const t = new Date().toTimeString().substr(0, 8);
@@ -997,5 +1386,53 @@
   boot();
 })();
 </script>
+<!-- ===== Sensor Quality Popup ============================================ -->
+<div class="sq-backdrop" id="sqBackdrop">
+  <div class="sq-modal">
+    <div class="sq-title">SENSOR CHECK · CLASSIFIED</div>
+    <div class="sq-headline" id="sqHeadline">Verifying Electrode Contact</div>
+    <div class="sq-sub" id="sqSub">Awaiting headset signal…</div>
+
+    <div class="sq-body">
+      <div class="sq-diagram-wrap">
+        <svg id="sqDiagram" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+          <!-- Head outline -->
+          <ellipse cx="120" cy="125" rx="100" ry="110"
+                   fill="none" stroke="#16304f" stroke-width="1.2"/>
+          <!-- Nose marker -->
+          <path d="M 110 18 L 120 8 L 130 18" fill="none" stroke="#16304f" stroke-width="1"/>
+          <!-- Ears -->
+          <ellipse cx="18" cy="125" rx="8" ry="20" fill="none" stroke="#16304f" stroke-width="1"/>
+          <ellipse cx="222" cy="125" rx="8" ry="20" fill="none" stroke="#16304f" stroke-width="1"/>
+          <!-- Midline reference lines -->
+          <line x1="120" y1="20" x2="120" y2="230" stroke="#0d2030" stroke-width="0.5" stroke-dasharray="2 3"/>
+          <line x1="25" y1="125" x2="215" y2="125" stroke="#0d2030" stroke-width="0.5" stroke-dasharray="2 3"/>
+          <!-- Electrodes injected by JS into this group -->
+          <g id="sqElectrodes"></g>
+        </svg>
+      </div>
+      <div>
+        <div class="sq-list" id="sqList"></div>
+      </div>
+    </div>
+
+    <div class="sq-summary">
+      <div class="stat"><div class="num good" id="sqCountGood">0</div><div class="lbl">GOOD</div></div>
+      <div class="stat"><div class="num fair" id="sqCountFair">0</div><div class="lbl">FAIR</div></div>
+      <div class="stat"><div class="num poor" id="sqCountPoor">0</div><div class="lbl">POOR</div></div>
+      <div class="stat"><div class="num off"  id="sqCountOff" >0</div><div class="lbl">OFFLINE</div></div>
+    </div>
+
+    <div class="sq-actions">
+      <div class="sq-gate-msg" id="sqGateMsg">Need ≥75% of channels good or fair</div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn" id="sqBtnRetry">Wait</button>
+        <button class="btn" id="sqBtnCancel">Cancel</button>
+        <button class="btn primary" id="sqBtnProceed" disabled>▸ Proceed to Session</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
