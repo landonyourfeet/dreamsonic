@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -724,7 +723,7 @@
         <div>BATTERY</div>
         <div class="v" id="batteryVal">—</div>
         <div style="margin-top:6px;">CHANNELS</div>
-        <div class="v">4 · O1 O2 T3 T4</div>
+        <div class="v" id="channelsVal">—</div>
       </div>
     </div>
 
@@ -833,7 +832,9 @@
 (function () {
   const sessionId = parseInt(window.location.pathname.match(/\/session\/(\d+)/)[1], 10);
   const qs = new URLSearchParams(window.location.search);
-  const eegKind = qs.get('source') || 'simulator';
+  // Initial fallback — overridden by session.eeg_device_code once we boot.
+  // The query-string ?source=... still works for forced-simulator dev mode.
+  let eegKind = qs.get('source') || 'simulator';
 
   // --- Readouts ----
   const bootTime = Date.now();
@@ -865,6 +866,17 @@
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'failed to load session');
       session = data.session;
+
+      // Override eegKind from the session's chosen device. This is the source
+      // of truth — set when the operator scheduled the session via the device
+      // dropdown. Falls back to legacy eeg_source enum, then simulator.
+      // Query-string ?source=... still works for dev forcing.
+      if (!qs.get('source')) {
+        eegKind = session.eeg_device_code
+                  || session.eeg_source
+                  || 'simulator';
+      }
+
       renderClient();
       renderProtocol();
       renderBandsBox();
@@ -875,7 +887,7 @@
         session.coach_staff_name || 'unassigned';
       document.getElementById('startedAt').textContent =
         session.started_at ? new Date(session.started_at).toLocaleTimeString() : '—';
-      document.getElementById('sourceVal').textContent = session.eeg_source || eegKind;
+      document.getElementById('sourceVal').textContent = eegKind;
       document.getElementById('protocolMeta').textContent =
         session.protocol_code || session.target_band.toUpperCase();
 
@@ -944,14 +956,26 @@
       }
       await eegSource.connect();
       log('ok', `Headband linked · source: ${eegKind}`);
-      // Initialize the sensor-quality popup with the device's profile,
-      // then open it. The Start Session button stays disabled until the
-      // operator clicks "Proceed to Session" inside the popup.
+
+      // Bridge-based sources (EPOC, MyndPlay) send their profile via WebSocket
+      // shortly after connect rather than synchronously. Wait a beat so we
+      // pick up the real profile rather than the local fallback.
+      await new Promise(r => setTimeout(r, 350));
+
       const profile = (typeof eegSource.getProfile === 'function')
         ? eegSource.getProfile()
         : { channel_map: ['CH1','CH2','CH3','CH4'], display_name: eegKind };
+
+      // Update the static channel readout in the timer meta-right block
+      const chs = profile.channel_map || [];
+      document.getElementById('channelsVal').textContent =
+        chs.length + (chs.length ? ' · ' + chs.join(' ') : '');
+
+      // Initialize the sensor-quality popup with the device's profile,
+      // then open it. The Start Session button stays disabled until the
+      // operator clicks "Proceed to Session" inside the popup.
       SensorQuality.openCheck(profile);
-      const info = eegSource.getDeviceInfo();
+      const info = eegSource.getDeviceInfo && eegSource.getDeviceInfo();
       if (info?.battery != null) document.getElementById('batteryVal').textContent = info.battery + '%';
     } catch (err) {
       log('err', 'Link failed · ' + err.message);
@@ -964,8 +988,15 @@
 
   function onSample(sample) {
     sampleCount++;
-    for (let i = 0; i < 4; i++) {
-      ringBuffer[i].push(sample.channels[i] || 0);
+    const incoming = sample.channels || [];
+    for (let i = 0; i < ringBuffer.length; i++) {
+      // For single-channel devices, channels 1-3 won't have data — duplicate
+      // the channel-0 value into the others so the waveform display still
+      // shows a trace on every line. Cosmetic only — the analysis engine
+      // uses the real channel count from the device profile.
+      const v = incoming[i] != null ? incoming[i]
+              : (incoming[0] != null ? incoming[0] : 0);
+      ringBuffer[i].push(v);
       if (ringBuffer[i].length > RING_MAX) ringBuffer[i].shift();
     }
   }
