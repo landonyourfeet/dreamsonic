@@ -219,6 +219,18 @@ let inZone             = false;
 // boost to compensate for the ~10x light attenuation through closed eyelids.
 let eyeClosed          = false;
 
+// Reveal state - the post-session "here's what happened" experience.
+// Driven by directive from the runner with the full session summary.
+const Reveal = {
+  active: false,
+  fadeAlpha: 0,             // 0..1 visibility
+  startedAt: 0,             // performance.now() when activated
+  duration: 90000,          // 90 seconds total
+  data: null,               // {baseline_brain_hz, final_brain_hz, target_hz,
+                            //  pre_stress, post_stress, pre_focus, post_focus,
+                            //  pre_mood, post_mood, target_band, scripture, headline}
+};
+
 // ---------- Canvas setup ----------
 const canvas = document.getElementById('scene');
 const ctx = canvas.getContext('2d', { alpha: true });
@@ -327,6 +339,8 @@ function render(now) {
   // from the cockpit. Returns immediately if Journey mode is off so it has
   // no cost when not active.
   if (typeof drawJourney === 'function') drawJourney(now);
+  // Reveal overlay - the 90-second post-session "here's what happened" experience.
+  if (typeof drawReveal === 'function') drawReveal(now);
 
   requestAnimationFrame(render);
 }
@@ -522,6 +536,143 @@ let carrierOsc = null;
 let amGain = null;
 let masterGain = null;
 
+// ---------- Ambient pad (generative, not aligned to entrainment Hz) ----------
+// Critical: the ambient pad must NOT pulse at integer multiples of the
+// entrainment frequency or it contaminates the photic+audio synchrony.
+// We use harmonically RELATED but non-coincident frequencies:
+//   - root drone at a fixed bass note (independent of entrainment)
+//   - perfect fifth above the root
+//   - octave above the root
+//   - subtle slow LFO at non-related frequencies for breathing motion
+// Pad volume swells slowly across the session, peaks during reveal.
+let padNodes = null;       // {gain, oscs, lfos} bundle
+let padTargetGain = 0;
+let padCurrentGain = 0;
+
+// Notes by target band (root frequency in Hz). Picked to feel like the band
+// emotionally without being mathematically coincident with the entrainment.
+// Entrainment is 2-14 Hz. Pad roots are 55-130 Hz - audible musical drones.
+const PAD_ROOTS = {
+  delta:  55,   // A1 - very deep, grounded
+  theta:  73,   // D2 - meditative, warm
+  alpha:  82,   // E2 - calm, open
+  smr:    98,   // G2 - alert, focused
+  beta:   110,  // A2 - active
+  gamma:  130,  // C3 - bright, awake
+};
+
+function initAmbientPad(rootHz) {
+  if (!audioCtx || padNodes) return;
+  try {
+    const root = rootHz || 82;
+    const padGain = audioCtx.createGain();
+    padGain.gain.value = 0;
+    padGain.connect(audioCtx.destination);
+
+    const oscs = [];
+    const lfos = [];
+    // Voice 1: Root sine (warm bass drone)
+    const v1 = audioCtx.createOscillator();
+    v1.type = 'sine';
+    v1.frequency.value = root;
+    const v1g = audioCtx.createGain();
+    v1g.gain.value = 0.45;
+    // Slow detune LFO - non-aligned to entrainment (uses 0.07 Hz)
+    const v1lfo = audioCtx.createOscillator();
+    v1lfo.type = 'sine';
+    v1lfo.frequency.value = 0.07;
+    const v1lfoG = audioCtx.createGain();
+    v1lfoG.gain.value = 0.5;  // detune by up to 0.5 cents
+    v1lfo.connect(v1lfoG);
+    v1lfoG.connect(v1.detune);
+    v1.connect(v1g); v1g.connect(padGain);
+    oscs.push(v1); lfos.push(v1lfo);
+
+    // Voice 2: Perfect fifth (musical companion to root)
+    const v2 = audioCtx.createOscillator();
+    v2.type = 'sine';
+    v2.frequency.value = root * 1.5;
+    const v2g = audioCtx.createGain();
+    v2g.gain.value = 0.30;
+    const v2lfo = audioCtx.createOscillator();
+    v2lfo.type = 'sine';
+    v2lfo.frequency.value = 0.11;
+    const v2lfoG = audioCtx.createGain();
+    v2lfoG.gain.value = 0.6;
+    v2lfo.connect(v2lfoG);
+    v2lfoG.connect(v2.detune);
+    v2.connect(v2g); v2g.connect(padGain);
+    oscs.push(v2); lfos.push(v2lfo);
+
+    // Voice 3: Octave above root (airy upper harmonic)
+    const v3 = audioCtx.createOscillator();
+    v3.type = 'triangle';
+    v3.frequency.value = root * 2;
+    const v3g = audioCtx.createGain();
+    v3g.gain.value = 0.18;
+    // Slow amplitude swell on this voice for "breathing" feel
+    const v3lfo = audioCtx.createOscillator();
+    v3lfo.type = 'sine';
+    v3lfo.frequency.value = 0.05;  // 20-second breath cycle
+    const v3lfoG = audioCtx.createGain();
+    v3lfoG.gain.value = 0.12;
+    v3lfo.connect(v3lfoG);
+    v3lfoG.connect(v3g.gain);
+    v3.connect(v3g); v3g.connect(padGain);
+    oscs.push(v3); lfos.push(v3lfo);
+
+    // Voice 4: Major third (sweetens) - low volume so it sits behind
+    const v4 = audioCtx.createOscillator();
+    v4.type = 'sine';
+    v4.frequency.value = root * 1.25;
+    const v4g = audioCtx.createGain();
+    v4g.gain.value = 0.12;
+    v4.connect(v4g); v4g.connect(padGain);
+    oscs.push(v4);
+
+    // Subtle gentle high shimmer (octave + fifth above root)
+    const v5 = audioCtx.createOscillator();
+    v5.type = 'sine';
+    v5.frequency.value = root * 3;
+    const v5g = audioCtx.createGain();
+    v5g.gain.value = 0.06;
+    const v5lfo = audioCtx.createOscillator();
+    v5lfo.type = 'sine';
+    v5lfo.frequency.value = 0.13;
+    const v5lfoG = audioCtx.createGain();
+    v5lfoG.gain.value = 0.06;
+    v5lfo.connect(v5lfoG);
+    v5lfoG.connect(v5g.gain);
+    v5.connect(v5g); v5g.connect(padGain);
+    oscs.push(v5); lfos.push(v5lfo);
+
+    // Lowpass filter for warmth
+    // (skipped here - keep simple, we can add if too bright)
+
+    for (const osc of oscs) osc.start();
+    for (const lfo of lfos) lfo.start();
+
+    padNodes = { gain: padGain, oscs, lfos, root };
+    console.log('[ambient] pad initialized at root', root, 'Hz');
+  } catch (e) {
+    console.warn('[ambient] pad init failed:', e.message);
+  }
+}
+
+function setAmbientLevel(targetLevel) {
+  // 0 = silent, 1 = full reveal volume. Smooth ramps via gain.linearRampToValueAtTime.
+  if (!padNodes || !audioCtx) return;
+  const now = audioCtx.currentTime;
+  const safeLevel = Math.max(0, Math.min(1, targetLevel));
+  // Pad never exceeds 0.18 absolute volume (sits BEHIND the isochronic tone
+  // which itself is ~0.4 max). Music should never overpower entrainment.
+  const finalGain = safeLevel * 0.18;
+  padTargetGain = finalGain;
+  padNodes.gain.gain.cancelScheduledValues(now);
+  padNodes.gain.gain.setValueAtTime(padNodes.gain.gain.value, now);
+  padNodes.gain.gain.linearRampToValueAtTime(finalGain, now + 4.0);  // 4s ramp
+}
+
 function initAudio() {
   if (audioCtx) return;
   try {
@@ -558,6 +709,12 @@ function initAudio() {
     lfo.start();
     biasOsc.start();
     window._dsLfo = lfo; // so we can update frequency later
+
+    // Initialize ambient pad. Picks the root note based on current target band.
+    // Pad starts silent; gain is raised by the runner via 'ambient_level'
+    // directives (subtle during stimulus, peaks during reveal).
+    const root = PAD_ROOTS[targetBand] || PAD_ROOTS.alpha;
+    initAmbientPad(root);
   } catch (e) {
     console.warn('[audio] init failed:', e.message);
   }
@@ -833,6 +990,335 @@ function drawRibbonParticles(points, trail, colorTemplate, overall, pulse) {
 let lastDirectiveTime = 0;
 const HEARTBEAT_TIMEOUT_MS = 30000;  // 30s of silence = fade out
 
+// =====================================================================
+// REVEAL - Post-session "here's what happened" experience.
+// 90-second animated screen showing the client their session journey:
+//   0-15s: gentle fade-in, "Your session" headline, soft music swells
+//   15-45s: animated trajectory line draws across showing brain frequency
+//           journey from baseline to final, with the protocol target as
+//           a reference line
+//   45-65s: pre/post comparison bars fill in (mood, focus, stress)
+//   65-80s: headline statistic in big type ("Your alpha increased 34%")
+//   80-90s: scripture verse + closing line, gentle fade-out
+//
+// All animation deterministic from elapsed time. The nebula stays alive
+// underneath as the visual continuity. Music swells from background to
+// foreground during the reveal then settles back.
+// =====================================================================
+function drawReveal(now) {
+  // Smooth fade in/out
+  const want = Reveal.active ? 1 : 0;
+  const fadeSpeed = 0.008;
+  if (Reveal.fadeAlpha < want) Reveal.fadeAlpha = Math.min(want, Reveal.fadeAlpha + fadeSpeed);
+  else if (Reveal.fadeAlpha > want) Reveal.fadeAlpha = Math.max(want, Reveal.fadeAlpha - fadeSpeed);
+  if (Reveal.fadeAlpha <= 0.001) return;
+  if (!Reveal.data) return;
+
+  const overall = Reveal.fadeAlpha;
+  const elapsed = now - Reveal.startedAt;
+  const t = elapsed / 1000;
+  const data = Reveal.data;
+
+  ctx.save();
+  ctx.globalAlpha = overall;
+
+  // Soft dark vignette so reveal text is readable over the bright nebula
+  const vignette = ctx.createRadialGradient(W/2, H/2, Math.min(W, H) * 0.2,
+                                             W/2, H/2, Math.max(W, H) * 0.7);
+  vignette.addColorStop(0, 'rgba(0,0,0,0.0)');
+  vignette.addColorStop(0.5, 'rgba(0,0,0,0.35)');
+  vignette.addColorStop(1, 'rgba(0,0,0,0.75)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, W, H);
+
+  // ---- Phase 1 (0-15s): Opening headline ----
+  if (t < 16) {
+    const phaseT = clampNum(t / 14, 0, 1);
+    const fade = easeOutCubic(phaseT) * fadeOutAt(t, 14, 16);
+    drawCenteredText('YOUR SESSION', W/2, H * 0.35,
+      `${Math.round(56 * Math.min(1, t / 1.5))}px`, 'rgba(180,220,255,' + (fade * 0.95) + ')',
+      8);
+    drawCenteredText('A few moments to see what unfolded',
+      W/2, H * 0.42, '17px', 'rgba(180,220,255,' + (fade * 0.7) + ')', 4);
+  }
+
+  // ---- Phase 2 (12-50s): Trajectory animation ----
+  if (t >= 12 && t < 52) {
+    const phaseT = clampNum((t - 12) / 38, 0, 1);
+    const fade = easeOutCubic(Math.min(1, (t - 12) / 2)) * fadeOutAt(t, 50, 52);
+    drawTrajectory(phaseT, fade, data);
+  }
+
+  // ---- Phase 3 (45-72s): Pre/Post comparison bars ----
+  if (t >= 45 && t < 74) {
+    const phaseT = clampNum((t - 45) / 25, 0, 1);
+    const fade = easeOutCubic(Math.min(1, (t - 45) / 1.5)) * fadeOutAt(t, 72, 74);
+    drawComparisonBars(phaseT, fade, data);
+  }
+
+  // ---- Phase 4 (68-86s): Headline statistic ----
+  if (t >= 68 && t < 88) {
+    const phaseT = clampNum((t - 68) / 18, 0, 1);
+    const fade = easeOutCubic(Math.min(1, (t - 68) / 1.5)) * fadeOutAt(t, 86, 88);
+    drawHeadlineStat(phaseT, fade, data);
+  }
+
+  // ---- Phase 5 (84s+): Scripture + closing ----
+  if (t >= 84 && t < 100) {
+    const phaseT = clampNum((t - 84) / 14, 0, 1);
+    const fade = easeOutCubic(Math.min(1, (t - 84) / 2));
+    drawClosing(phaseT, fade, data);
+  }
+
+  ctx.restore();
+}
+
+function clampNum(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function fadeOutAt(t, fadeStart, fadeEnd) {
+  if (t < fadeStart) return 1;
+  if (t > fadeEnd) return 0;
+  return 1 - (t - fadeStart) / (fadeEnd - fadeStart);
+}
+
+function drawCenteredText(text, x, y, size, color, letterSpacing) {
+  ctx.font = `300 ${size} -apple-system, BlinkMacSystemFont, sans-serif`;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (letterSpacing && ctx.letterSpacing !== undefined) {
+    // Modern Chrome supports ctx.letterSpacing
+    ctx.letterSpacing = letterSpacing + 'px';
+    ctx.fillText(text, x, y);
+    ctx.letterSpacing = '0px';
+  } else {
+    // Fallback: draw character by character
+    let cursor = x - (text.length * (parseInt(size) * 0.3 + (letterSpacing || 0))) / 2;
+    for (const ch of text) {
+      const w = ctx.measureText(ch).width;
+      ctx.fillText(ch, cursor + w / 2, y);
+      cursor += w + (letterSpacing || 0);
+    }
+  }
+}
+
+// Trajectory chart: brain frequency over the session. Draws an animated
+// glowing arc from baseline to final, with the protocol target as a
+// horizontal reference line.
+function drawTrajectory(phaseT, fade, data) {
+  const baselineHz = Number(data.baseline_brain_hz) || 10;
+  const finalHz = Number(data.final_brain_hz) || baselineHz;
+  const targetHz = Number(data.computed_target_hz) || finalHz;
+
+  // Frame the chart - bottom 1/3 of screen
+  const chartX = W * 0.18;
+  const chartY = H * 0.50;
+  const chartW = W * 0.64;
+  const chartH = H * 0.30;
+
+  // Y-axis range covers baseline, final, and target with padding
+  const allHz = [baselineHz, finalHz, targetHz];
+  const minHz = Math.max(2, Math.min(...allHz) - 1.5);
+  const maxHz = Math.min(14, Math.max(...allHz) + 1.5);
+  const hzRange = Math.max(0.5, maxHz - minHz);
+
+  // Helpers
+  function yForHz(hz) {
+    const norm = (hz - minHz) / hzRange;
+    return chartY + chartH - norm * chartH;
+  }
+
+  // Subtle frame
+  ctx.strokeStyle = `rgba(140,180,220,${fade * 0.18})`;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(chartX, chartY, chartW, chartH);
+
+  // Y-axis labels
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = `rgba(180,200,230,${fade * 0.5})`;
+  ctx.fillText(maxHz.toFixed(1) + ' Hz', chartX - 8, chartY);
+  ctx.fillText(minHz.toFixed(1) + ' Hz', chartX - 8, chartY + chartH);
+
+  // Target line (purple, dashed)
+  const targetY = yForHz(targetHz);
+  ctx.strokeStyle = `rgba(180, 120, 255, ${fade * 0.55})`;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(chartX, targetY);
+  ctx.lineTo(chartX + chartW, targetY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = `rgba(200, 160, 255, ${fade * 0.7})`;
+  ctx.font = '10px monospace';
+  ctx.fillText(`TARGET ${targetHz.toFixed(1)}Hz`, chartX + chartW + 6, targetY);
+
+  // Trajectory line - draws from baseline (left) to final (right) progressively.
+  // Use a smooth arc so it looks like a real journey rather than a step.
+  const startX = chartX;
+  const endX = chartX + chartW;
+  const startY = yForHz(baselineHz);
+  const endY = yForHz(finalHz);
+
+  // Sample many points along the curve, draw the portion based on phaseT
+  const STEPS = 80;
+  const visibleSteps = Math.floor(STEPS * phaseT);
+
+  ctx.strokeStyle = `rgba(140, 240, 230, ${fade * 0.85})`;
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = 'rgba(140, 240, 230, 0.7)';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  for (let i = 0; i <= visibleSteps; i++) {
+    const f = i / STEPS;
+    // Easing curve - accelerates then decelerates (real session shape)
+    const eased = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+    const x = startX + f * (endX - startX);
+    const y = startY + eased * (endY - startY);
+    // Add a little organic wobble - real EEG isn't perfectly smooth
+    const wobble = Math.sin(f * 18 + Reveal.startedAt / 1000) * 4;
+    if (i === 0) ctx.moveTo(x, y + wobble);
+    else ctx.lineTo(x, y + wobble);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Endpoint markers
+  // Start
+  ctx.fillStyle = `rgba(140, 240, 230, ${fade * Math.min(1, phaseT * 4)})`;
+  ctx.beginPath();
+  ctx.arc(startX, startY, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // End (only after trajectory reaches it)
+  if (phaseT > 0.92) {
+    const endFade = (phaseT - 0.92) / 0.08;
+    ctx.fillStyle = `rgba(255, 215, 130, ${fade * endFade})`;
+    ctx.shadowColor = 'rgba(255, 215, 130, 0.8)';
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.arc(endX, endY, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Labels at endpoints
+  ctx.font = '13px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = `rgba(140, 240, 230, ${fade * Math.min(1, phaseT * 4)})`;
+  ctx.fillText(`STARTED ${baselineHz.toFixed(1)}Hz`, startX + 12, startY - 14);
+  if (phaseT > 0.95) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = `rgba(255, 215, 130, ${fade * (phaseT - 0.95) / 0.05})`;
+    ctx.fillText(`ENDED ${finalHz.toFixed(1)}Hz`, endX - 12, endY - 14);
+  }
+
+  // Title above chart
+  drawCenteredText('YOUR BRAIN\u2019S JOURNEY', W/2, chartY - 30,
+    '14px', `rgba(180,220,255,${fade * 0.85})`, 6);
+}
+
+// Pre/Post comparison bars - 3 horizontal bars showing self-report shifts
+function drawComparisonBars(phaseT, fade, data) {
+  const items = [
+    { label: 'MOOD',
+      pre: Number(data.pre_mood) || 0,
+      post: Number(data.post_mood) || 0 },
+    { label: 'FOCUS',
+      pre: Number(data.pre_focus) || 0,
+      post: Number(data.post_focus) || 0 },
+    { label: 'STRESS',
+      pre: Number(data.pre_stress) || 0,
+      post: Number(data.post_stress) || 0 },
+  ];
+
+  const blockX = W * 0.20;
+  const blockY = H * 0.55;
+  const blockW = W * 0.60;
+  const rowH = 56;
+
+  drawCenteredText('HOW YOU FEEL', W/2, blockY - 30,
+    '14px', `rgba(180,220,255,${fade * 0.85})`, 6);
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const y = blockY + i * rowH;
+    // Reveal bars one at a time
+    const itemDelay = i * 0.18;
+    const itemT = clampNum((phaseT - itemDelay) / 0.7, 0, 1);
+    if (itemT <= 0) continue;
+    const localFade = fade * easeOutCubic(itemT);
+
+    // Label
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = `rgba(180,200,230,${localFade * 0.7})`;
+    ctx.fillText(item.label, blockX, y - 6);
+
+    // Pre bar (cool gray)
+    const barX = blockX;
+    const barY = y;
+    const barW = blockW;
+    const barH = 8;
+    ctx.fillStyle = `rgba(80, 100, 130, ${localFade * 0.45})`;
+    ctx.fillRect(barX, barY, barW * (item.pre / 10), barH);
+
+    // Post bar overlay (color depends on direction)
+    const improved = (item.label === 'STRESS')
+      ? item.post < item.pre
+      : item.post > item.pre;
+    const postColor = improved
+      ? `rgba(140, 240, 200, ${localFade})`
+      : `rgba(200, 200, 220, ${localFade * 0.8})`;
+    ctx.fillStyle = postColor;
+    // Animate post bar fill
+    const animatedPost = (item.pre / 10) + ((item.post - item.pre) / 10) * itemT;
+    ctx.fillRect(barX, barY + barH + 3, barW * (item.post / 10), barH);
+
+    // Numeric labels
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = `rgba(160,180,210,${localFade * 0.55})`;
+    ctx.fillText(item.pre + ' before', barX + barW + 80, barY + barH/2 + 4);
+    ctx.fillStyle = improved
+      ? `rgba(140, 240, 200, ${localFade})`
+      : `rgba(200, 200, 220, ${localFade * 0.8})`;
+    ctx.fillText(item.post + ' after', barX + barW + 80, barY + barH + 3 + barH/2 + 4);
+  }
+}
+
+// Headline statistic - one big takeaway in giant type
+function drawHeadlineStat(phaseT, fade, data) {
+  const headline = data.headline || 'Your brain showed measurable change.';
+  const subhead = data.headline_sub || '';
+
+  const fontSize = Math.floor(W * 0.030);  // ~3% of viewport width
+  drawCenteredText(headline, W/2, H * 0.42,
+    fontSize + 'px', `rgba(255,255,255,${fade * 0.95})`, 1);
+  if (subhead) {
+    drawCenteredText(subhead, W/2, H * 0.50,
+      '17px', `rgba(180,220,255,${fade * 0.7})`, 3);
+  }
+}
+
+// Scripture + closing
+function drawClosing(phaseT, fade, data) {
+  const scripture = data.scripture || '';
+  const scriptureRef = data.scripture_ref || '';
+  const closingLine = data.closing_line || 'Your next session is ready when you are.';
+
+  drawCenteredText('"' + scripture + '"', W/2, H * 0.35,
+    '20px', `rgba(220,235,255,${fade * 0.9})`, 1);
+  drawCenteredText(scriptureRef, W/2, H * 0.42,
+    '13px', `rgba(180,220,255,${fade * 0.7})`, 3);
+  drawCenteredText(closingLine, W/2, H * 0.57,
+    '15px', `rgba(180,220,255,${fade * 0.85})`, 3);
+}
+
 function applyDirective(d) {
   if (!d) return;
   lastDirectiveTime = performance.now();
@@ -901,6 +1387,23 @@ function applyDirective(d) {
   // brain_hz hasn't arrived yet
   if (typeof d.frequencyHz === 'number') {
     Journey.orbHz = targetHz;
+  }
+  // ---- Reveal activation ----
+  // Runner sends reveal_start: true with reveal_data: {...summary...} to
+  // enter the post-session reveal experience. Player switches rendering.
+  if (d.reveal_start === true && d.reveal_data) {
+    Reveal.active = true;
+    Reveal.startedAt = performance.now();
+    Reveal.data = d.reveal_data;
+    console.log('[reveal] activated', Reveal.data);
+  }
+  if (d.reveal_end === true) {
+    Reveal.active = false;
+  }
+  // Ambient pad level (0..1) from runner. Subtle during stimulus,
+  // peaks during the reveal moment.
+  if (typeof d.ambient_level === 'number') {
+    setAmbientLevel(d.ambient_level);
   }
   // Expose state to window so the WebGL nebula script (separate IIFE)
   // can read the current pulse parameters.
