@@ -297,6 +297,27 @@ function analyzeWindow(ringBuffer, deviceProfile) {
     temporalAsymmetry = safeLogRatio(byRole.rightTemporal.alpha, byRole.leftTemporal.alpha);
   }
 
+  // Spectral Asymmetry Index (SASI) — single-site mood marker.
+  // For single-channel devices (MyndPlay) where bilateral asymmetry isn't
+  // possible, SASI compares slow-band (theta+alpha) to fast-band (beta) power
+  // at the same site. Higher slow-band relative to fast-band correlates with
+  // depressed/withdrawn states; lower correlates with active engagement.
+  // Reference: Hinrikus et al. 2009; Mohammadi et al. 2015.
+  // Computed as the natural log ratio: ln(beta) - ln(theta + alpha)
+  // Positive = active/engaged; Negative = withdrawn/depressed-leaning.
+  let spectralAsymmetry = null;
+  if (byRole.leftFrontal && !byRole.rightFrontal) {
+    // Single frontal channel — use SASI at that site
+    const ch = byRole.leftFrontal;
+    spectralAsymmetry = safeLogRatio(ch.beta, ch.theta + ch.alpha);
+  } else if (byRole.rightFrontal && !byRole.leftFrontal) {
+    const ch = byRole.rightFrontal;
+    spectralAsymmetry = safeLogRatio(ch.beta, ch.theta + ch.alpha);
+  } else if (frontal && deviceProfile.channel_count === 1) {
+    // Fallback: any single frontal channel device
+    spectralAsymmetry = safeLogRatio(frontal.beta, frontal.theta + frontal.alpha);
+  }
+
   return {
     timestamp: Date.now(),
     deviceCode: deviceProfile.code,
@@ -304,9 +325,11 @@ function analyzeWindow(ringBuffer, deviceProfile) {
     channels,
     frontal, temporal, occipital, allSites,
     ratios,
-    frontalAsymmetry,        // null on devices without frontal channels
-    temporalAsymmetry,       // always present if temporal channels exist
+    frontalAsymmetry,        // null on devices without bilateral frontal channels
+    temporalAsymmetry,       // always present if bilateral temporal channels exist
+    spectralAsymmetry,       // SASI — single-site mood proxy (single-channel devices)
     frontalAvailable: deviceProfile.frontal_available,
+    singleChannelMode: deviceProfile.channel_count === 1,
   };
 }
 
@@ -382,6 +405,21 @@ function detectState(current, baseline, protocol) {
     }
   }
 
+  // 4b. SASI MOOD FLAG — single-channel fallback (MyndPlay etc.)
+  // SASI = ln(beta) - ln(theta + alpha). Lower = withdrawn/depressed-leaning.
+  // We flag when current SASI has dropped meaningfully below baseline.
+  if (current.singleChannelMode && current.spectralAsymmetry !== null
+      && baseline.spectralAsymmetry !== null) {
+    const sasiDrop = baseline.spectralAsymmetry - current.spectralAsymmetry;
+    // A drop of 0.3+ log units sustained = meaningful shift toward slow-band dominance
+    if (sasiDrop > 0.3) {
+      return { state: 'SASI_MOOD_FLAG',
+        confidence: clamp(sasiDrop, 0.5, 0.85),
+        rationale: 'Slow-band dominance increased — withdrawn-leaning shift',
+        deltaFromBase };
+    }
+  }
+
   // 5. ON TARGET
   const targetDelta = deltaFromBase[target_band];
   if (targetDelta > 0.15 && Math.abs(deltaFromBase.beta) < 0.3) {
@@ -440,6 +478,14 @@ function proposeDirective(stateResult, currentOutput, protocol) {
       intensity = Math.min(75, currentOutput.intensity_pct + 5);
       action = 'ACTIVATION_TRAIN';
       reason = 'Right-dominant frontal alpha — training approach motivation';
+      break;
+    case 'SASI_MOOD_FLAG':
+      // Single-channel mood flag - same training direction as FAA flag
+      // Goal: shift balance from slow-band dominance toward beta engagement
+      freq = 13.0;
+      intensity = Math.min(75, currentOutput.intensity_pct + 5);
+      action = 'ACTIVATION_TRAIN';
+      reason = 'Slow-band dominance — training approach activation (single-channel)';
       break;
     case 'ON_TARGET':
       freq = 0.8 * currentOutput.frequency_hz + 0.2 * target_frequency_hz;
