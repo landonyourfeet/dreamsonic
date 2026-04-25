@@ -1378,6 +1378,31 @@
     if (w) {
       w.focus();
       log('info', 'STIMULATION DISPLAY · launched · drag to second monitor');
+
+      // Make sure the runner's controller link is up, then push an initial
+      // directive after the player has had time to connect and join. This is
+      // a belt-and-suspenders fallback — the runner should also auto-send
+      // when it sees peer_joined, but in case that race is missed, this
+      // guarantees the orb has a frequency to pulse at.
+      if (!controllerWs || controllerWs.readyState !== WebSocket.OPEN) {
+        connectController();
+      }
+      setTimeout(() => {
+        if (!session) return;
+        const hz = autopilotOrbHz != null ? autopilotOrbHz
+                 : Number(session.target_frequency_hz);
+        const intensity = (phase === 'stimulus') ? 65
+                       : (phase === 'baseline' || phase === 'cooldown') ? 30
+                       : 50;
+        sendDirective({
+          frequencyHz: hz,
+          intensityPct: intensity,
+          action: 'INITIAL_LOCK',
+          reason: 'player launched',
+          target_band: session.target_band,
+        });
+        log('ok', 'STIMULATION DISPLAY · initial directive sent · ' + hz + 'Hz @ ' + intensity + '%');
+      }, 2000);
     } else {
       log('warn', 'STIMULATION DISPLAY · popup blocked · allow popups for halo.dreamsonic.org');
       alert('Popup was blocked. Please allow popups for halo.dreamsonic.org and try again.');
@@ -1618,13 +1643,22 @@
     MatchMigrate.setOrbHz(autopilotOrbHz);
     MatchMigrate.setEngineAction(action, severity);
 
-    // Send directive to stimulation player
+    // Send directive to stimulation player. Includes Journey state so the
+    // bioluminescent ribbons can render correctly if Journey mode is on.
+    // (Journey mode itself is toggled separately by the cockpit.)
     sendDirective({
       frequencyHz: autopilotOrbHz,
       intensityPct: 65,
       action: action.replace(/[^A-Z_ ]/g, '').trim() || 'AUTOPILOT',
       reason: 'autopilot match-and-migrate',
       target_band: session.target_band,
+      brain_hz: brainHz,
+      target_hz: targetHz,
+      lock_state: autopilotState === 'target_reached' ? 'reached'
+                : autopilotState === 'locked' ? 'locked'
+                : autopilotState === 'migrating' ? 'locked'
+                : autopilotState === 'matching' ? 'acquiring'
+                : 'no-lock',
     });
   }, 15000);  // 15-second tick interval, matches MM_TICK_INTERVAL_MS
 
@@ -1634,6 +1668,7 @@
   // session room (the player listens at role='player').
   let controllerWs = null;
   let controllerWsReconnect = 1000;
+  let controllerConnected = false;
   function connectController() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const url = `${proto}://${location.host}/ws`;
@@ -1645,6 +1680,7 @@
     }
     controllerWs.onopen = () => {
       controllerWsReconnect = 1000;
+      controllerConnected = true;
       controllerWs.send(JSON.stringify({
         type: 'join', session_id: sessionId, role: 'controller',
       }));
@@ -1670,26 +1706,40 @@
         log('ok', 'Player connected · initial directive sent · ' + hz + 'Hz');
       }
     };
-    controllerWs.onclose = () => {
+    controllerWs.onclose = (e) => {
+      controllerConnected = false;
       controllerWs = null;
+      log('warn', `Controller link lost (code ${e.code}) · reconnecting in ${Math.round(controllerWsReconnect/1000)}s`);
       setTimeout(connectController,
         Math.min(10000, controllerWsReconnect = controllerWsReconnect * 1.5));
     };
-    controllerWs.onerror = () => { /* onclose runs */ };
+    controllerWs.onerror = (e) => {
+      log('warn', 'Controller link error · ' + (e.message || 'unknown'));
+    };
   }
   function sendDirective(payload) {
-    if (!controllerWs || controllerWs.readyState !== WebSocket.OPEN) return;
+    if (!controllerWs || controllerWs.readyState !== WebSocket.OPEN) {
+      // First time we try to send when not connected, attempt to reconnect.
+      // Subsequent tries are silent until a connection succeeds.
+      if (!controllerConnected && !controllerWs) {
+        connectController();
+      }
+      return;
+    }
     try {
       controllerWs.send(JSON.stringify({
         type: 'directive',
         session_id: sessionId,
         payload,
       }));
-    } catch (e) { /* swallow */ }
+    } catch (e) {
+      log('warn', 'Directive send failed · ' + e.message);
+    }
   }
   // Connect once at boot so the player picks up directives whenever
-  // we have something to send.
-  connectController();
+  // we have something to send. Wrap in a setTimeout to let the page
+  // finish initial render before opening sockets.
+  setTimeout(connectController, 100);
 
   // Helper to read the current brain Hz from MatchMigrate
   function currentBrainHzFromMM() {
@@ -1942,11 +1992,25 @@
       pushOrbSample(currentOrbHz);
     }
 
+    // Smoothed brain frequency - EMA filter prevents the cyan line from
+    // jolting when raw band-power values fluctuate session-to-session.
+    // alpha = 0.18 means each new reading blends 18% into the smoothed value.
+    const BRAIN_SMOOTH_ALPHA = 0.18;
+    let smoothedBrainHz = null;
+
     function pushBrainSample(hz) {
       const n = Number(hz);
       if (!isFinite(n)) return;
       // Clamp to chart range so off-band readings don't tank the display
-      const clamped = Math.max(HZ_MIN, Math.min(HZ_MAX, n));
+      const raw = Math.max(HZ_MIN, Math.min(HZ_MAX, n));
+      // EMA smoothing
+      if (smoothedBrainHz === null) {
+        smoothedBrainHz = raw;
+      } else {
+        smoothedBrainHz = (1 - BRAIN_SMOOTH_ALPHA) * smoothedBrainHz
+                        + BRAIN_SMOOTH_ALPHA * raw;
+      }
+      const clamped = smoothedBrainHz;
       currentBrainHz = clamped;
       window._mmCurrentBrainHz = clamped;  // for autopilot loop to read
       const t = Date.now();
