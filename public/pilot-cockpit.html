@@ -215,6 +215,55 @@
   .cue-btn.just-right  { border-left: 2px solid var(--halo-green); }
   .cue-btn.more        { border-left: 2px solid var(--halo-amber); }
 
+  /* --- Journey View toggle (above abort) --- */
+  .journey-toggle-wrap {
+    padding: 12px 20px 0;
+    background: var(--halo-void);
+  }
+  .journey-toggle-label {
+    font-size: 9px; letter-spacing: 3px;
+    color: var(--halo-text-faint);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .journey-toggle {
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    color: var(--halo-text-dim);
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.25s ease;
+  }
+  .journey-toggle:hover {
+    border-color: var(--halo-cyan);
+    background: rgba(0, 212, 255, 0.04);
+  }
+  .journey-toggle.active {
+    border-color: var(--halo-purple);
+    background: linear-gradient(90deg, rgba(170, 102, 255, 0.10), rgba(0, 212, 255, 0.04));
+    box-shadow: 0 0 14px rgba(170, 102, 255, 0.18) inset;
+  }
+  .journey-toggle .journey-state {
+    display: block;
+    font-size: 13px; letter-spacing: 2px;
+    color: var(--halo-text-dim);
+    transition: color 0.25s ease;
+  }
+  .journey-toggle.active .journey-state {
+    color: var(--halo-cyan);
+  }
+  .journey-toggle .journey-hint {
+    display: block;
+    font-size: 10px; letter-spacing: 0.5px;
+    color: var(--halo-text-faint);
+    margin-top: 4px;
+    text-transform: none;
+  }
+
   /* --- ABORT --- */
   .abort-wrap {
     margin-top: auto;
@@ -394,6 +443,15 @@
         <span class="label">▸ MORE</span>PLEASE
       </button>
     </div>
+  </div>
+
+  <!-- Journey View toggle - swaps in the bioluminescent ribbons overlay -->
+  <div class="journey-toggle-wrap">
+    <div class="journey-toggle-label">CLIENT VIEW MODE</div>
+    <button class="journey-toggle" id="journeyToggle" type="button">
+      <span class="journey-state" id="journeyState">JOURNEY · OFF</span>
+      <span class="journey-hint">click to fade in feedback ribbons</span>
+    </button>
   </div>
 
   <div class="abort-wrap">
@@ -669,6 +727,44 @@ $('abortBtn').addEventListener('click', () => {
   $('abortBtn').disabled = true;
   $('engineAction').textContent = 'ABORTED · FADE TO BLACK';
   $('engineAction').classList.add('amber');
+});
+
+// ============================================================================
+// JOURNEY VIEW TOGGLE
+// ----------------------------------------------------------------------------
+// Sends a 'directive' message with journey_mode: true|false. The player
+// listens, sets Journey.enabled, and the drawJourney loop fades the
+// bioluminescent ribbons in or out smoothly over ~1.5 seconds.
+// The orb stays visible underneath - this is an OVERLAY, not a replacement.
+// ============================================================================
+let journeyEnabled = false;
+$('journeyToggle').addEventListener('click', () => {
+  journeyEnabled = !journeyEnabled;
+  const btn = $('journeyToggle');
+  const label = $('journeyState');
+  if (journeyEnabled) {
+    btn.classList.add('active');
+    label.textContent = 'JOURNEY · ON';
+  } else {
+    btn.classList.remove('active');
+    label.textContent = 'JOURNEY · OFF';
+  }
+  // Send the toggle directive. The runner is the autopilot's source of truth
+  // for brain_hz/target_hz/lock_state, so we don't include those here -
+  // those flow continuously from the runner's autopilot tick.
+  sendWS({
+    type: 'directive',
+    payload: { journey_mode: journeyEnabled, reason: 'cockpit toggle' },
+  });
+  // Log it to session events
+  fetch(`/api/sessions/${sessionId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event_type: 'journey_mode_toggle',
+      metadata: { enabled: journeyEnabled, at_freq: currentFreq },
+    }),
+  }).catch(() => {});
 });
 
 // ============================================================================
