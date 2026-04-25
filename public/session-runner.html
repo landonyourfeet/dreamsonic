@@ -209,7 +209,7 @@
   .band-fill {
     position: absolute; bottom: 0; left: 0; right: 0;
     background: var(--halo-cyan); height: 0%;
-    transition: height 0.25s ease-out;
+    transition: height 0.9s cubic-bezier(0.25, 0.1, 0.25, 1.0);
     box-shadow: 0 0 8px var(--halo-cyan);
   }
   .band.target .band-fill {
@@ -217,6 +217,9 @@
     box-shadow: 0 0 10px var(--halo-green);
   }
   .band.target .band-name { color: var(--halo-green); text-shadow: 0 0 6px rgba(0, 255, 136, 0.5); }
+  .band-value {
+    transition: opacity 0.4s ease;
+  }
 
   /* RIGHT: Telemetry */
   .event-log {
@@ -1204,11 +1207,50 @@
     }
   }, 1000);
 
+  // Smooth numeric tweening — animates a numeric text value between its
+  // current and target value over `durationMs`, instead of snapping. Cleans
+  // up gauges/readouts that update on a 1Hz-3Hz cadence.
+  const _tweenState = new Map();  // element id → { from, to, startTs, dur, fmt }
+  function tweenNumber(elementId, newValue, durationMs, formatter) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const dur = durationMs || 700;
+    const fmt = formatter || (v => v.toFixed(1));
+    const prev = _tweenState.get(elementId);
+    const fromValue = prev ? prev.lastDisplay : Number(el.textContent.replace(/[^\d.\-]/g, '')) || 0;
+    _tweenState.set(elementId, {
+      from: fromValue,
+      to: Number(newValue) || 0,
+      startTs: performance.now(),
+      dur,
+      fmt,
+      lastDisplay: fromValue,
+      el,
+    });
+  }
+  function _tweenTick(now) {
+    for (const [id, state] of _tweenState.entries()) {
+      const t = Math.min(1, (now - state.startTs) / state.dur);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      const val = state.from + (state.to - state.from) * eased;
+      state.lastDisplay = val;
+      state.el.textContent = state.fmt(val);
+      if (t >= 1) _tweenState.delete(id);
+    }
+    requestAnimationFrame(_tweenTick);
+  }
+  requestAnimationFrame(_tweenTick);
+
   function updateBandsUI(powers) {
-    const max = Math.max(...Object.values(powers), 1);
+    const numeric = {};
+    for (const b of BAND_KEYS) numeric[b] = Number(powers[b]) || 0;
+    const max = Math.max(...Object.values(numeric), 1);
     for (const b of BAND_KEYS) {
-      const pct = Math.min(100, (powers[b] / max) * 100);
-      document.getElementById(`bv-${b}`).textContent = powers[b].toFixed(1);
+      const pct = Math.min(100, (numeric[b] / max) * 100);
+      // Tween the numeric label (the "596262.0" under each bar)
+      tweenNumber(`bv-${b}`, numeric[b], 700, v => v.toFixed(1));
+      // Bar height transitions via CSS already
       document.getElementById(`bf-${b}`).style.height = pct + '%';
     }
   }
@@ -1372,7 +1414,8 @@
     }
     if (!session) return;
 
-    const targetHz = session.target_frequency_hz;
+    const targetHz = Number(session.target_frequency_hz);
+    if (!isFinite(targetHz)) return;
     const brainHz = currentBrainHzFromMM();
     if (brainHz == null) {
       MatchMigrate.setEngineAction('AWAITING SIGNAL', 'amber');
@@ -1628,45 +1671,55 @@
     function $(id) { return document.getElementById(id); }
 
     function setTargetHz(hz) {
-      currentTargetHz = hz;
-      const label = $('mmTargetHz');
-      if (label) label.textContent = hz != null ? hz.toFixed(1) + ' Hz' : '— Hz';
-      pushTargetSample(hz);
+      const n = Number(hz);
+      currentTargetHz = isFinite(n) ? n : null;
+      if (currentTargetHz != null) {
+        tweenNumber('mmTargetHz', currentTargetHz, 600, v => v.toFixed(1) + ' Hz');
+      } else {
+        const label = $('mmTargetHz');
+        if (label) label.textContent = '— Hz';
+      }
+      pushTargetSample(currentTargetHz);
     }
 
     function setOrbHz(hz) {
-      currentOrbHz = hz;
-      const label = $('mmOrbHz');
-      if (label) label.textContent = hz != null ? hz.toFixed(1) + ' Hz' : '— Hz';
-      pushOrbSample(hz);
+      const n = Number(hz);
+      currentOrbHz = isFinite(n) ? n : null;
+      if (currentOrbHz != null) {
+        tweenNumber('mmOrbHz', currentOrbHz, 1500, v => v.toFixed(1) + ' Hz');
+      } else {
+        const label = $('mmOrbHz');
+        if (label) label.textContent = '— Hz';
+      }
+      pushOrbSample(currentOrbHz);
     }
 
     function pushBrainSample(hz) {
-      if (hz == null || !isFinite(hz)) return;
+      const n = Number(hz);
+      if (!isFinite(n)) return;
       // Clamp to chart range so off-band readings don't tank the display
-      const clamped = Math.max(HZ_MIN, Math.min(HZ_MAX, hz));
+      const clamped = Math.max(HZ_MIN, Math.min(HZ_MAX, n));
       currentBrainHz = clamped;
       window._mmCurrentBrainHz = clamped;  // for autopilot loop to read
       const t = Date.now();
       brainHistory.push({ t, hz: clamped });
       pruneHistory(brainHistory);
-      const label = $('mmBrainHz');
-      if (label) label.textContent = clamped.toFixed(1) + ' Hz';
+      tweenNumber('mmBrainHz', clamped, 500, v => v.toFixed(1) + ' Hz');
       recomputeLock();
     }
 
     function pushOrbSample(hz) {
-      if (hz == null) return;
-      const t = Date.now();
-      orbHistory.push({ t, hz });
+      const n = Number(hz);
+      if (!isFinite(n)) return;
+      orbHistory.push({ t: Date.now(), hz: n });
       pruneHistory(orbHistory);
       recomputeLock();
     }
 
     function pushTargetSample(hz) {
-      if (hz == null) return;
-      const t = Date.now();
-      targetHistory.push({ t, hz });
+      const n = Number(hz);
+      if (!isFinite(n)) return;
+      targetHistory.push({ t: Date.now(), hz: n });
       pruneHistory(targetHistory);
     }
 
@@ -1758,16 +1811,24 @@
       const now = Date.now();
       function plot(history, color, lineWidth, glow) {
         if (history.length === 0) return;
+        // Convert all points to (x,y) first
+        const pts = history.map(({ t, hz }) => ({
+          x: (1 - (now - t) / (WINDOW_SEC * 1000)) * W,
+          y: (1 - (hz - HZ_MIN) / (HZ_MAX - HZ_MIN)) * H,
+        }));
         ctx.beginPath();
-        for (let i = 0; i < history.length; i++) {
-          const { t, hz } = history[i];
-          const xRatio = 1 - (now - t) / (WINDOW_SEC * 1000);
-          const yRatio = 1 - (hz - HZ_MIN) / (HZ_MAX - HZ_MIN);
-          const x = xRatio * W;
-          const y = yRatio * H;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+        ctx.moveTo(pts[0].x, pts[0].y);
+        // Catmull-Rom-ish smoothing using quadratic curves between midpoints
+        for (let i = 1; i < pts.length; i++) {
+          const p0 = pts[i - 1];
+          const p1 = pts[i];
+          const midX = (p0.x + p1.x) / 2;
+          const midY = (p0.y + p1.y) / 2;
+          ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
         }
+        // Final segment to the last actual point
+        const last = pts[pts.length - 1];
+        ctx.lineTo(last.x, last.y);
         if (glow) {
           ctx.shadowColor = color;
           ctx.shadowBlur = 8;
@@ -1776,6 +1837,8 @@
         }
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctx.stroke();
         ctx.shadowBlur = 0;
       }
@@ -1806,8 +1869,8 @@
       ctx.setLineDash([]);
     }
 
-    // Render at 10Hz
-    setInterval(render, 100);
+    // Render at 30Hz for smooth motion
+    setInterval(render, 33);
 
     return {
       setTargetHz, setOrbHz,
