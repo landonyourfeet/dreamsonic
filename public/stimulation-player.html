@@ -291,6 +291,26 @@ function render(now) {
   const rampProgress = Math.min(1, (now - rampStartTime) / rampDurationMs);
   effectiveIntensity = rampStartValue + (targetIntensity - rampStartValue) * rampProgress;
 
+  // Heartbeat check - if no directive received in 30s, the controller
+  // has gone silent (runner/cockpit closed). Fade out so a stranded
+  // player doesn't keep flashing forever.
+  if (lastDirectiveTime > 0 && (now - lastDirectiveTime) > HEARTBEAT_TIMEOUT_MS) {
+    if (targetIntensity > 0) {
+      console.log('[player] no directive received in 30s, fading out');
+      rampStartValue = effectiveIntensity;
+      targetIntensity = 0;
+      rampStartTime = now;
+      rampDurationMs = SAFETY.FADE_RAMP_MS;
+      // Show the disconnect overlay so the operator sees what happened
+      const overlay = document.getElementById('discOverlay');
+      if (overlay) {
+        overlay.classList.add('show');
+        const detail = document.getElementById('discDetail');
+        if (detail) detail.textContent = 'Controller silent · awaiting directives';
+      }
+    }
+  }
+
   // Sync state to window so the WebGL nebula shader can read the current
   // pulse parameters every frame.
   window.targetHz = targetHz;
@@ -302,6 +322,11 @@ function render(now) {
   // now purely a transparent overlay layer - all rendering happens in the
   // ray-marched fragment shader on the WebGL canvas underneath.
   ctx.clearRect(0, 0, W, H);
+
+  // Journey ribbons overlay - bioluminescent feedback layer toggled on/off
+  // from the cockpit. Returns immediately if Journey mode is off so it has
+  // no cost when not active.
+  if (typeof drawJourney === 'function') drawJourney(now);
 
   requestAnimationFrame(render);
 }
@@ -801,8 +826,21 @@ function drawRibbonParticles(points, trail, colorTemplate, overall, pulse) {
   }
 }
 
+// Heartbeat tracking - if no directive arrives for HEARTBEAT_TIMEOUT_MS,
+// we assume the controller (runner/cockpit) has gone away and fade out.
+// This catches the case where the WebSocket stays open but nobody is
+// driving us.
+let lastDirectiveTime = 0;
+const HEARTBEAT_TIMEOUT_MS = 30000;  // 30s of silence = fade out
+
 function applyDirective(d) {
   if (!d) return;
+  lastDirectiveTime = performance.now();
+  // Hide the disconnect/silent overlay if it was showing
+  const overlay = document.getElementById('discOverlay');
+  if (overlay && overlay.classList.contains('show')) {
+    overlay.classList.remove('show');
+  }
   // Frequency clamp — defense in depth; server also clamps
   if (typeof d.frequencyHz === 'number') {
     targetHz = Math.max(SAFETY.MIN_FREQ_HZ, Math.min(SAFETY.MAX_FREQ_HZ, d.frequencyHz));
@@ -937,6 +975,17 @@ function connect() {
     console.log('[player] ws closed, reconnecting in', reconnectDelay);
     document.getElementById('discOverlay').classList.add('show');
     document.getElementById('discDetail').textContent = 'Reconnecting…';
+
+    // Connection lost = no controller = stimulation must stop. Fade
+    // intensity to 0 over the standard fade ramp. The render loop and
+    // audio still tick, but with intensity=0 the orb dims to almost
+    // nothing and the audio drops to inaudible. When the controller
+    // reconnects and sends a new directive, intensity ramps back up.
+    rampStartValue = effectiveIntensity;
+    targetIntensity = 0;
+    rampStartTime = performance.now();
+    rampDurationMs = SAFETY.FADE_RAMP_MS;
+
     setTimeout(connect, reconnectDelay);
     reconnectDelay = Math.min(maxReconnectDelay, reconnectDelay * 1.5);
   };
@@ -1215,13 +1264,13 @@ vec3 shootingStar(vec2 uv) {
   float across = abs(dot(toPixel, vec2(-dir.y, dir.x)));
 
   // Trail extends behind the head
-  float trailLen = 0.45;
-  if (along > 0.05 || along < -trailLen) return vec3(0.0);
-  if (across > 0.012) return vec3(0.0);
+  float trailLen = 0.22;
+  if (along > 0.025 || along < -trailLen) return vec3(0.0);
+  if (across > 0.005) return vec3(0.0);
 
   // Bright head, fading trail
   float trailFade = smoothstep(-trailLen, 0.0, along);
-  float lateralFade = smoothstep(0.012, 0.0, across);
+  float lateralFade = smoothstep(0.005, 0.0, across);
   // Whole shooting star fades out near the end of its life
   float lifeFade = smoothstep(1.0, 0.85, uShootProgress)
                  * smoothstep(0.0, 0.15, uShootProgress);
