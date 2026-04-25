@@ -36,6 +36,19 @@ const DEFAULT_EEG_DEVICES = [
     driver_module: 'brainbit',
     notes: 'Primary production device. Dry electrodes, 4 channels, occipital + temporal montage.',
   },
+  {
+    code: 'epoc1',
+    display_name: 'Emotiv EPOC 1.0',
+    vendor: 'Emotiv',
+    channel_count: 14,
+    channel_map: ['F3','FC5','AF3','F7','T7','P7','O1','O2','P8','T8','F8','AF4','FC6','F4'],
+    sample_rate_hz: 128,
+    max_safe_amplitude_uv: 1000,
+    frontal_available: true,
+    connection_type: 'bluetooth',
+    driver_module: 'epoc-bridge',
+    notes: '14-channel saline-electrode EEG. Full bilateral frontal coverage enables true Frontal Alpha Asymmetry. Requires the EPOC bridge program running on the operator Mac (see /epoc-bridge/README.md).',
+  },
   // Future devices — uncomment when hardware arrives and SDK drivers are wired.
   // {
   //   code: 'muse2',
