@@ -237,13 +237,18 @@ async function init() {
   // Freeform staff session placeholders. The sessions table has hard FK
   // constraints on client_id and protocol_id, so we seed sentinels that
   // freeform sessions can attach to. They never appear in client lists
-  // because intake.html/dashboard.html filter by external_id pattern.
+  // because dashboard.html filters by general_notes containing the marker.
+  // The staff client uses a deterministic UUID so subsequent boots find
+  // the same row instead of creating duplicates.
   await query(
     `INSERT INTO wellness_clients
-      (external_id, first_name, last_name_initial, email, phone,
-       date_of_birth, medical_clearance_status, intake_completed_at)
-     VALUES ('FREEFORM_STAFF_PLACEHOLDER', 'Staff', 'X', 'staff@dreamsonic.local',
-             '0000000000', '2000-01-01', 'cleared', NOW())
+      (external_id, first_name, last_name_initial,
+       dob_month, dob_year, email, phone,
+       medical_clearance_status, general_notes, active)
+     VALUES ('00000000-0000-4f00-8aff-000000000001'::uuid,
+             'Staff', 'X',
+             1, 2000, 'staff@dreamsonic.local', '0000000000',
+             'cleared', 'FREEFORM_STAFF_PLACEHOLDER · do not edit · used for quick-launch sessions', FALSE)
      ON CONFLICT (external_id) DO NOTHING`
   );
   await query(
