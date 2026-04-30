@@ -64,6 +64,7 @@ const packet    = require('./routes/packet');
 const attention = require('./routes/attention');
 const devices   = require('./routes/devices');
 const matchMigrate = require('./routes/match-migrate');
+const freeform = require('./routes/freeform');
 
 app.use('/api', apiHostGate, clients);
 app.use('/api', apiHostGate, protocols);
@@ -73,6 +74,7 @@ app.use('/api', apiHostGate, packet);
 app.use('/api', apiHostGate, attention);
 app.use('/api', apiHostGate, devices);
 app.use('/api', apiHostGate, matchMigrate);
+app.use('/api', apiHostGate, freeform);
 
 // --- Views + static assets (host-aware) -----------------------------------
 require('./views').mount(app);
