@@ -234,6 +234,27 @@ async function init() {
     );
   }
 
+  // Freeform staff session placeholders. The sessions table has hard FK
+  // constraints on client_id and protocol_id, so we seed sentinels that
+  // freeform sessions can attach to. They never appear in client lists
+  // because intake.html/dashboard.html filter by external_id pattern.
+  await query(
+    `INSERT INTO wellness_clients
+      (external_id, first_name, last_name_initial, email, phone,
+       date_of_birth, medical_clearance_status, intake_completed_at)
+     VALUES ('FREEFORM_STAFF_PLACEHOLDER', 'Staff', 'X', 'staff@dreamsonic.local',
+             '0000000000', '2000-01-01', 'cleared', NOW())
+     ON CONFLICT (external_id) DO NOTHING`
+  );
+  await query(
+    `INSERT INTO wellness_protocols
+      (code, name, target_band, target_frequency_hz, duration_minutes,
+       light_intensity_pct, audio_type, description_wellness, max_freq_shift)
+     VALUES ('FREEFORM', 'Freeform Staff Test', 'alpha', 10.0, 60,
+             50, 'isochronic', 'Staff freeform / quick-launch test session.', 12.0)
+     ON CONFLICT (code) DO NOTHING`
+  );
+
   const { rows: dc } = await query(`SELECT COUNT(*)::int AS c FROM wellness_eeg_devices`);
   const { rows: pc } = await query(`SELECT COUNT(*)::int AS c FROM wellness_protocols`);
   const { rows: vc } = await query(`SELECT COUNT(*)::int AS c FROM wellness_coach_note_vocab`);
