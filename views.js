@@ -37,6 +37,9 @@ function mount(app) {
   app.get('/session/:id/cockpit', haloOnly, (req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, 'pilot-cockpit.html'));
   });
+  app.get('/session/:id/freeform', haloOnly, (req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'freeform-runner.html'));
+  });
   app.get('/attention-check', haloOnly, (req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, 'attention-check.html'));
   });
