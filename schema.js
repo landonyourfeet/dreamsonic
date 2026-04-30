@@ -276,6 +276,15 @@ const STATEMENTS = [
      ADD COLUMN IF NOT EXISTS baseline_brain_hz NUMERIC(5,2)`,
   `ALTER TABLE wellness_sessions
      ADD COLUMN IF NOT EXISTS computed_target_hz NUMERIC(5,2)`,
+
+  // Freeform staff sessions - no client, no protocol, manual control.
+  // Filter these out of client analytics + reports.
+  `ALTER TABLE wellness_sessions
+     ADD COLUMN IF NOT EXISTS is_freeform BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE wellness_sessions
+     ADD COLUMN IF NOT EXISTS freeform_label TEXT`,
+  `ALTER TABLE wellness_sessions
+     ADD COLUMN IF NOT EXISTS military_mode BOOLEAN NOT NULL DEFAULT FALSE`,
 ];
 
 async function init() {
