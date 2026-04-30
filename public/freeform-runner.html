@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DreamSonic · Freeform</title>
+<style>
+  :root {
+    --halo-void: #02050a;
+    --halo-deep: #050912;
+    --halo-panel: #08111e;
+    --halo-line: #1a3052;
+    --halo-cyan: #00d4ff;
+    --halo-green: #00ff88;
+    --halo-amber: #ffaa00;
+    --halo-red: #ff3050;
+    --halo-purple: #aa66ff;
+    --halo-text: #c8e0ff;
+    --halo-text-dim: #6088b0;
+    --halo-text-faint: #3a5678;
+    --military: #ff3050;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--halo-void);
+    color: var(--halo-text);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    padding: 30px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .panel {
+    width: 100%; max-width: 580px;
+    background: linear-gradient(180deg, var(--halo-panel) 0%, var(--halo-deep) 100%);
+    border: 1px solid var(--halo-line);
+    padding: 28px 32px;
+    position: relative;
+  }
+  .panel.military-on {
+    border-color: var(--military);
+    box-shadow: 0 0 30px rgba(255,48,80,0.18) inset;
+  }
+  .panel::before, .panel::after {
+    content: ''; position: absolute;
+    width: 14px; height: 14px;
+    border: 1px solid var(--halo-cyan);
+    box-shadow: 0 0 10px rgba(0,212,255,0.4);
+  }
+  .panel.military-on::before, .panel.military-on::after {
+    border-color: var(--military);
+    box-shadow: 0 0 10px rgba(255,48,80,0.5);
+  }
+  .panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .panel::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+  h1 {
+    font-size: 11px; letter-spacing: 4px; color: var(--halo-cyan);
+    text-transform: uppercase; margin-bottom: 4px; font-weight: 500;
+  }
+  h2 {
+    font-size: 24px; font-weight: 200; letter-spacing: 1px;
+    margin-bottom: 18px;
+  }
+  .panel.military-on h1 { color: var(--military); }
+
+  .row { margin-bottom: 18px; }
+  label {
+    display: flex; justify-content: space-between;
+    font-size: 9px; letter-spacing: 3px; color: var(--halo-text-dim);
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+  label .val { color: var(--halo-cyan); font-family: monospace; font-size: 12px; }
+  .panel.military-on label .val { color: var(--military); }
+
+  input[type=text] {
+    width: 100%;
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    color: var(--halo-text);
+    padding: 10px 12px;
+    font-family: monospace; font-size: 13px;
+    letter-spacing: 1px;
+  }
+  input[type=text]:focus {
+    border-color: var(--halo-cyan); outline: none;
+    box-shadow: 0 0 8px rgba(0,212,255,0.2);
+  }
+
+  input[type=range] {
+    width: 100%;
+    -webkit-appearance: none;
+    background: transparent;
+    height: 24px;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 3px;
+    background: var(--halo-line);
+    border-radius: 2px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    background: var(--halo-cyan);
+    border-radius: 50%;
+    margin-top: -8px;
+    box-shadow: 0 0 8px rgba(0,212,255,0.6);
+    cursor: pointer;
+  }
+  .panel.military-on input[type=range]::-webkit-slider-thumb {
+    background: var(--military);
+    box-shadow: 0 0 8px rgba(255,48,80,0.6);
+  }
+
+  .scale-meta {
+    display: flex; justify-content: space-between;
+    font-family: monospace; font-size: 9px;
+    color: var(--halo-text-faint); margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  select {
+    width: 100%;
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    color: var(--halo-text);
+    padding: 9px 12px;
+    font-family: monospace; font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  .toggles {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-bottom: 18px;
+  }
+  .toggle-btn {
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    color: var(--halo-text-dim);
+    padding: 10px 12px;
+    font-size: 10px; letter-spacing: 2px;
+    text-transform: uppercase; cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+  .toggle-btn:hover { border-color: var(--halo-cyan); color: var(--halo-cyan); }
+  .toggle-btn.active {
+    border-color: var(--halo-cyan); color: var(--halo-cyan);
+    background: rgba(0,212,255,0.05);
+    box-shadow: 0 0 10px rgba(0,212,255,0.15) inset;
+  }
+  .toggle-btn.military-toggle.active {
+    border-color: var(--military); color: var(--military);
+    background: rgba(255,48,80,0.08);
+    box-shadow: 0 0 14px rgba(255,48,80,0.30) inset;
+  }
+
+  .actions {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--halo-line);
+  }
+  .btn {
+    background: var(--halo-void);
+    border: 1px solid var(--halo-cyan);
+    color: var(--halo-cyan);
+    padding: 12px;
+    font-size: 11px; letter-spacing: 3px;
+    text-transform: uppercase; cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+  }
+  .btn:hover {
+    background: rgba(0,212,255,0.08);
+    box-shadow: 0 0 14px rgba(0,212,255,0.25);
+  }
+  .btn.primary {
+    background: rgba(0,212,255,0.12);
+    color: var(--halo-cyan);
+    box-shadow: 0 0 14px rgba(0,212,255,0.20) inset;
+  }
+  .btn.danger {
+    border-color: var(--halo-red); color: var(--halo-red);
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .freq-band-display {
+    text-align: center;
+    padding: 14px;
+    background: var(--halo-void);
+    border: 1px solid var(--halo-line);
+    margin-bottom: 18px;
+  }
+  .freq-band-display .freq {
+    font-family: monospace; font-size: 32px; font-weight: 200;
+    color: var(--halo-cyan); letter-spacing: 2px;
+  }
+  .panel.military-on .freq-band-display .freq { color: var(--military); }
+  .freq-band-display .band {
+    font-size: 10px; letter-spacing: 4px; color: var(--halo-text-dim);
+    text-transform: uppercase; margin-top: 4px;
+  }
+
+  .warn-strip {
+    display: none;
+    background: var(--military);
+    color: white;
+    text-align: center;
+    padding: 6px;
+    font-size: 9px; letter-spacing: 4px;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    animation: warn-pulse 1.4s ease-in-out infinite;
+  }
+  .panel.military-on .warn-strip { display: block; }
+  @keyframes warn-pulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.55; }
+  }
+
+  .session-active-banner {
+    display: none;
+    text-align: center; padding: 10px;
+    background: rgba(0,255,136,0.08);
+    border: 1px solid var(--halo-green);
+    color: var(--halo-green);
+    font-size: 10px; letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .session-active-banner.show { display: block; }
+
+  .home-link {
+    display: block;
+    text-align: center;
+    color: var(--halo-text-faint);
+    font-size: 9px; letter-spacing: 3px;
+    text-transform: uppercase;
+    text-decoration: none;
+    margin-top: 18px;
+  }
+  .home-link:hover { color: var(--halo-cyan); }
+</style>
+</head>
+<body>
+
+<div class="panel" id="mainPanel">
+  <div class="warn-strip">⚠ MILITARY MODE · SAFETY CLAMPS DISABLED ⚠</div>
+
+  <h1>● FREEFORM · STAFF MODE</h1>
+  <h2>Quick Start</h2>
+
+  <div class="session-active-banner" id="activeBanner">SESSION ACTIVE</div>
+
+  <div class="row">
+    <label>Session Name (optional) <span class="val"></span></label>
+    <input type="text" id="labelInput" placeholder="e.g. testing · landon · 2pm" maxlength="80">
+  </div>
+
+  <div class="row">
+    <label>EEG Device <span class="val"></span></label>
+    <select id="deviceSelect">
+      <option value="">No EEG (visual + audio only)</option>
+      <option value="simulator">Simulator (synthetic)</option>
+      <option value="myndband">MyndPlay MindWave (BLE)</option>
+      <option value="brainbit">BrainBit Headband (BLE)</option>
+      <option value="epoc1">Emotiv EPOC 1.0 (USB bridge)</option>
+    </select>
+  </div>
+
+  <div class="freq-band-display">
+    <div class="freq" id="freqDisplay">10.0 Hz</div>
+    <div class="band" id="bandDisplay">ALPHA</div>
+  </div>
+
+  <div class="row">
+    <label>Frequency <span class="val" id="freqVal">10.0 Hz</span></label>
+    <input type="range" id="freqSlider" min="2" max="14" step="0.1" value="10">
+    <div class="scale-meta">
+      <span id="freqMin">2 Hz</span><span>SAFE: 2-14 Hz</span><span id="freqMax">14 Hz</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>Intensity <span class="val" id="intensityVal">60%</span></label>
+    <input type="range" id="intensitySlider" min="0" max="100" step="1" value="60">
+    <div class="scale-meta">
+      <span>OFF</span><span></span><span>FULL</span>
+    </div>
+  </div>
+
+  <div class="toggles">
+    <button class="toggle-btn" id="audioToggle">AUDIO · ON</button>
+    <button class="toggle-btn" id="journeyToggle">▸ JOURNEY OFF</button>
+    <button class="toggle-btn" id="revealToggle">▸ REVEAL</button>
+    <button class="toggle-btn military-toggle" id="militaryToggle">▽ MILITARY OFF</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="launchBtn">▸ LAUNCH PLAYER</button>
+    <button class="btn danger" id="endBtn" disabled>⏹ END SESSION</button>
+  </div>
+
+  <a class="home-link" href="/dashboard">◂ Return to Halo Dashboard</a>
+</div>
+
+<script>
+'use strict';
+// =============================================================================
+// FREEFORM RUNNER
+//
+// Quick-start staff session. No client gate, no protocol selection. Operator
+// sets frequency + intensity, optionally enables EEG, launches the player.
+// All controls flow live to the player via WebSocket directives.
+// =============================================================================
+
+const sessionId = parseInt(window.location.pathname.match(/\/session\/(\d+)/)[1], 10);
+
+// ---- Band auto-detect from frequency ----
+function bandForFreq(hz) {
+  if (hz < 4)   return 'delta';
+  if (hz < 8)   return 'theta';
+  if (hz < 13)  return 'alpha';
+  if (hz < 16)  return 'smr';
+  if (hz < 31)  return 'beta';
+  return 'gamma';
+}
+
+// ---- State ----
+let currentFreq = 10.0;
+let currentIntensity = 60;
+let audioEnabled = true;
+let journeyEnabled = false;
+let militaryMode = false;
+let playerWindow = null;
+let activeSession = false;
+
+// ---- WebSocket controller link ----
+let ws = null;
+let wsReconnectDelay = 1000;
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => {
+    wsReconnectDelay = 1000;
+    ws.send(JSON.stringify({ type: 'join', session_id: sessionId, role: 'controller' }));
+    console.log('[freeform] WS controller linked');
+  };
+  ws.onclose = () => {
+    setTimeout(connectWs, Math.min(10000, wsReconnectDelay *= 1.5));
+  };
+  ws.onerror = () => {};
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.type === 'peer_joined' && m.role === 'player') {
+      sendDirective(buildDirective());  // resync
+    }
+  };
+}
+
+function sendDirective(payload) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'directive', session_id: sessionId, payload }));
+}
+
+function buildDirective() {
+  return {
+    frequencyHz: currentFreq,
+    intensityPct: audioEnabled ? currentIntensity : 0,
+    target_band: bandForFreq(currentFreq),
+    action: 'FREEFORM',
+    reason: 'staff freeform control',
+    journey_mode: journeyEnabled,
+    ambient_level: 0.3,
+  };
+}
+
+// ---- Heartbeat so player doesn't fade-out from silence ----
+setInterval(() => {
+  if (activeSession) sendDirective(buildDirective());
+}, 5000);
+
+// ---- UI Updates ----
+function updateFreqDisplay() {
+  const hz = currentFreq;
+  document.getElementById('freqDisplay').textContent = hz.toFixed(1) + ' Hz';
+  document.getElementById('freqVal').textContent = hz.toFixed(1) + ' Hz';
+  const band = bandForFreq(hz);
+  document.getElementById('bandDisplay').textContent = band.toUpperCase();
+}
+
+function updateIntensityDisplay() {
+  document.getElementById('intensityVal').textContent =
+    (audioEnabled ? currentIntensity : 0) + '%';
+}
+
+// ---- Slider handlers ----
+const freqSlider = document.getElementById('freqSlider');
+freqSlider.addEventListener('input', () => {
+  currentFreq = parseFloat(freqSlider.value);
+  updateFreqDisplay();
+  if (activeSession) sendDirective(buildDirective());
+});
+
+const intensitySlider = document.getElementById('intensitySlider');
+intensitySlider.addEventListener('input', () => {
+  currentIntensity = parseInt(intensitySlider.value, 10);
+  updateIntensityDisplay();
+  if (activeSession) sendDirective(buildDirective());
+});
+
+// ---- Toggle handlers ----
+const audioToggle = document.getElementById('audioToggle');
+audioToggle.classList.add('active');
+audioToggle.addEventListener('click', () => {
+  audioEnabled = !audioEnabled;
+  audioToggle.classList.toggle('active', audioEnabled);
+  audioToggle.textContent = audioEnabled ? 'AUDIO · ON' : 'AUDIO · OFF';
+  updateIntensityDisplay();
+  if (activeSession) sendDirective(buildDirective());
+});
+
+const journeyToggle = document.getElementById('journeyToggle');
+journeyToggle.addEventListener('click', () => {
+  journeyEnabled = !journeyEnabled;
+  journeyToggle.classList.toggle('active', journeyEnabled);
+  journeyToggle.textContent = journeyEnabled ? '● JOURNEY ON' : '▸ JOURNEY OFF';
+  if (activeSession) sendDirective(buildDirective());
+});
+
+const revealToggle = document.getElementById('revealToggle');
+revealToggle.addEventListener('click', () => {
+  if (!activeSession) {
+    alert('Launch player first');
+    return;
+  }
+  // Trigger a placeholder reveal - no real session data
+  sendDirective({
+    reveal_start: true,
+    reveal_data: {
+      baseline_brain_hz: currentFreq - 1,
+      final_brain_hz: currentFreq,
+      computed_target_hz: currentFreq,
+      target_band: bandForFreq(currentFreq),
+      pre_stress: 5, post_stress: 4,
+      pre_focus: 5, post_focus: 7,
+      pre_mood: 5, post_mood: 7,
+      headline: 'Freeform Test Reveal',
+      headline_sub: '90 second demo of the reveal experience',
+      scripture: 'Be still, and know that I am God.',
+      scripture_ref: 'Psalm 46:10',
+      closing_line: 'This was a staff freeform test.',
+    },
+    ambient_level: 1.0,
+  });
+  setTimeout(() => sendDirective({ reveal_end: true, ambient_level: 0.3 }), 94000);
+});
+
+// ---- Military mode toggle ----
+const militaryToggle = document.getElementById('militaryToggle');
+const mainPanel = document.getElementById('mainPanel');
+militaryToggle.addEventListener('click', () => {
+  if (!militaryMode) {
+    if (!confirm(
+      'ENABLE MILITARY MODE?\n\n' +
+      'This DISABLES safety clamps:\n' +
+      '  • Frequency range expands to 1-50 Hz\n' +
+      '  • Photic stimulation can exceed clinical limits\n' +
+      '  • Intensity caps removed\n\n' +
+      'Use only on yourself in a controlled environment.\n' +
+      'NEVER engage with clients in this mode.\n\n' +
+      'Confirm to enable.'
+    )) {
+      return;
+    }
+  }
+  militaryMode = !militaryMode;
+  militaryToggle.classList.toggle('active', militaryMode);
+  militaryToggle.textContent = militaryMode ? '▲ MILITARY ON' : '▽ MILITARY OFF';
+  mainPanel.classList.toggle('military-on', militaryMode);
+
+  // Adjust slider bounds + scale labels
+  if (militaryMode) {
+    freqSlider.min = 1;
+    freqSlider.max = 50;
+    document.getElementById('freqMin').textContent = '1 Hz';
+    document.getElementById('freqMax').textContent = '50 Hz';
+    document.querySelector('.scale-meta span:nth-child(2)').textContent = 'EXPANDED: 1-50 Hz';
+  } else {
+    freqSlider.min = 2;
+    freqSlider.max = 14;
+    document.getElementById('freqMin').textContent = '2 Hz';
+    document.getElementById('freqMax').textContent = '14 Hz';
+    document.querySelector('.scale-meta span:nth-child(2)').textContent = 'SAFE: 2-14 Hz';
+    // Re-clamp current freq if out of range
+    if (currentFreq < 2) { currentFreq = 2; freqSlider.value = 2; }
+    if (currentFreq > 14) { currentFreq = 14; freqSlider.value = 14; }
+    updateFreqDisplay();
+    if (activeSession) sendDirective(buildDirective());
+  }
+});
+
+// ---- Launch + end ----
+const launchBtn = document.getElementById('launchBtn');
+const endBtn = document.getElementById('endBtn');
+
+launchBtn.addEventListener('click', () => {
+  const url = `/session/${sessionId}/player`;
+  const features = 'width=1280,height=800,resizable=yes,scrollbars=no,location=no';
+  playerWindow = window.open(url, `dreamsonic_freeform_${sessionId}`, features);
+  if (!playerWindow) {
+    alert('Popup blocked. Allow popups for this site and try again.');
+    return;
+  }
+  activeSession = true;
+  document.getElementById('activeBanner').classList.add('show');
+  launchBtn.disabled = true;
+  endBtn.disabled = false;
+  // Wait for player to connect, then push initial directive
+  setTimeout(() => sendDirective(buildDirective()), 2000);
+});
+
+endBtn.addEventListener('click', async () => {
+  if (!confirm('End freeform session?')) return;
+  // Tell player to fade out
+  sendDirective({ frequencyHz: currentFreq, intensityPct: 0,
+                  target_band: bandForFreq(currentFreq),
+                  action: 'ABORT', reason: 'staff ended freeform' });
+  try {
+    await fetch(`/api/freeform/${sessionId}/end`, { method: 'POST' });
+  } catch (e) {}
+  if (playerWindow && !playerWindow.closed) playerWindow.close();
+  activeSession = false;
+  document.getElementById('activeBanner').classList.remove('show');
+  launchBtn.disabled = false;
+  endBtn.disabled = true;
+});
+
+// ---- Boot ----
+updateFreqDisplay();
+updateIntensityDisplay();
+connectWs();
+
+// Save label on blur
+document.getElementById('labelInput').addEventListener('blur', async (e) => {
+  const label = e.target.value.trim();
+  if (!label) return;
+  try {
+    await fetch(`/api/sessions/${sessionId}/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_type: 'freeform_label_set', metadata: { label } }),
+    });
+  } catch (e) {}
+});
+</script>
+
+</body>
+</html>
