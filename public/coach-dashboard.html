@@ -98,6 +98,7 @@
   <div class="op-status">
     <div>SESSION ID <span class="v" id="sessionIdReadout">—</span></div>
     <div>UPTIME <span class="v" id="uptimeReadout">00:00</span></div>
+    <button class="btn" id="quickStartBtn" style="border-color: var(--halo-amber); color: var(--halo-amber); background: rgba(255,170,0,0.05);">▸ QUICK START</button>
     <a class="btn primary" href="/intake">+ NEW CLIENT</a>
   </div>
 </div>
@@ -307,6 +308,23 @@ async function load() {
   }
 }
 load();
+
+// ===== Quick Start (freeform staff session) ====================
+document.getElementById('quickStartBtn').addEventListener('click', async () => {
+  if (!confirm('Launch freeform staff session?\n\nNo client, no protocol, no clearance gate. For staff testing only.')) return;
+  try {
+    const r = await fetch('/api/freeform/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'failed');
+    window.location.href = data.redirect;
+  } catch (err) {
+    alert('Quick Start failed: ' + err.message);
+  }
+});
 </script>
 </body>
 </html>
