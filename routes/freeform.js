@@ -35,8 +35,11 @@ router.post('/freeform/start', async (req, res) => {
     } = req.body || {};
 
     // Look up the staff placeholder client + freeform protocol
+    // (deterministic UUID seeded in seed-data.js)
+    const STAFF_PLACEHOLDER_UUID = '00000000-0000-4f00-8aff-000000000001';
     const { rows: cRows } = await query(
-      `SELECT id FROM wellness_clients WHERE external_id = 'FREEFORM_STAFF_PLACEHOLDER'`
+      `SELECT id FROM wellness_clients WHERE external_id = $1::uuid`,
+      [STAFF_PLACEHOLDER_UUID]
     );
     if (!cRows.length) {
       return res.status(500).json({
